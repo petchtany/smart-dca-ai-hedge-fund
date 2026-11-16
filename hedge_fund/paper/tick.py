@@ -1,4 +1,4 @@
-"""tick — advance a paper fund by exactly one session.
+﻿"""tick â€” advance a paper fund by exactly one session.
 
 This is what a human, a scheduler, or the runner calls when a session is
 due:
@@ -47,7 +47,7 @@ class NothingDue(RuntimeError):
 
 class RecordedClock:
     """A bar run again at the prices it saw. A print cannot be taken twice,
-    so a redo of a bar serves the marks its record kept — the book's names,
+    so a redo of a bar serves the marks its record kept â€” the book's names,
     the benchmark, and whatever the executed decision was sized at. A name
     none of those cover has no honest price, and the redo says so."""
 
@@ -278,4 +278,14 @@ def _run(
     )
     if is_intraday(session) and is_last_bar(session, deployed.spec.window):
         ledger.checkpoint(next_state(state, record))
+    try:
+        import sys as _sys
+        _root = str(Path(__file__).resolve().parent.parent.parent)
+        if _root not in _sys.path:
+            _sys.path.insert(0, _root)
+        import trade_plan as _tp
+        _tp.sync_report_quietly()
+    except Exception:
+        pass
     return record
+

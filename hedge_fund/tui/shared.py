@@ -1,4 +1,4 @@
-"""Presentation constants and renderables shared by the app and the CLI.
+﻿"""Presentation constants and renderables shared by the app and the CLI.
 
 Textual-free by design: the interactive app (hedge_fund/tui/app.py) and the
 non-interactive CLI (hedge_fund/run.py) both import from here, and the CLI must not
@@ -62,9 +62,9 @@ def horizon_label(days: int) -> str:
 
 # The LLM the investor agents reason with. Picked once, upfront; make_llm()
 # reads HEDGE_FUND_LLM_MODEL (hedge_fund/llm/client.py) and routes to the right provider, so
-# setting that env var steers every agent instance — the warm roster AND the
-# Fund — with no threading. Quant models (PEAD) carry no LLM and ignore it.
-DEFAULT_MODEL_LABEL = "Opus 5.5"
+# setting that env var steers every agent instance â€” the warm roster AND the
+# Fund â€” with no threading. Quant models (PEAD) carry no LLM and ignore it.
+DEFAULT_MODEL_LABEL = "Gemini 2.5 Flash"
 
 DEFAULT_RISK = {"max_position_pct": 0.25, "max_gross_exposure": 1.0,
                 "halve_drawdown_pct": 0.10, "max_drawdown_pct": 0.20}
@@ -73,8 +73,8 @@ DEFAULT_CAPITAL = 100_000.0
 # The default backtest window. With the 100-day factor warm-up the replay
 # reaches 360 days back, inside the 365 days x402 serves a wallet.
 BACKTEST_DAYS = 260
-BOARD_REFRESH = 1 / 12  # seconds between run-board repaints — smooth, not frantic
-WARM_CHUNK = 10      # dates per warm task — small enough that one stock still fans out
+BOARD_REFRESH = 1 / 12  # seconds between run-board repaints â€” smooth, not frantic
+WARM_CHUNK = 10      # dates per warm task â€” small enough that one stock still fans out
 
 _CHART_HEIGHT = 8
 
@@ -107,8 +107,8 @@ def fund_label(spec: FundSpec) -> str:
     """One aligned line per fund: name, staff, cadence."""
     staff = ", ".join(f"{s.title} ({MODE_LABELS[s.blend.mode]})" for s in spec.strategies[:3])
     if len(spec.strategies) > 3:
-        staff += ", …"
-    return f"{spec.name:<18} {staff} · {spec.cadence_label}"
+        staff += ", â€¦"
+    return f"{spec.name:<18} {staff} Â· {spec.cadence_label}"
 
 
 def agent_names(spec: FundSpec) -> list[str]:
@@ -144,7 +144,7 @@ def _render_chart(
 ) -> list[Text]:
     """Two-series unicode line chart, tearsheet-style: the fund against its
     benchmark on one set of axes, dollar labels in a left gutter. Lines are
-    box-drawing polylines (asciichart-style), not filled areas — the gap
+    box-drawing polylines (asciichart-style), not filled areas â€” the gap
     between the two lines is the point. The fund draws last, so where the
     lines collide the fund wins the cell.
     """
@@ -175,17 +175,17 @@ def _render_chart(
         for x in range(plot_width - 1):
             y0, y1 = level[x], level[x + 1]
             if y0 == y1:
-                grid[_CHART_HEIGHT - 1 - y0][x] = ("─", style_of(cols[x]))
+                grid[_CHART_HEIGHT - 1 - y0][x] = ("â”€", style_of(cols[x]))
             else:
-                # Rising: turn up (╯) at the low level, arrive (╭) at the high.
-                # Falling: turn down (╮) at the high, arrive (╰) at the low.
+                # Rising: turn up (â•¯) at the low level, arrive (â•­) at the high.
+                # Falling: turn down (â•®) at the high, arrive (â•°) at the low.
                 grid[_CHART_HEIGHT - 1 - y0][x] = (
-                    "╯" if y1 > y0 else "╮", style_of(cols[x]))
+                    "â•¯" if y1 > y0 else "â•®", style_of(cols[x]))
                 grid[_CHART_HEIGHT - 1 - y1][x] = (
-                    "╭" if y1 > y0 else "╰", style_of(cols[x]))
+                    "â•­" if y1 > y0 else "â•°", style_of(cols[x]))
                 for y in range(min(y0, y1) + 1, max(y0, y1)):
-                    grid[_CHART_HEIGHT - 1 - y][x] = ("│", style_of(cols[x]))
-        grid[_CHART_HEIGHT - 1 - level[-1]][-1] = ("─", style_of(cols[-1]))
+                    grid[_CHART_HEIGHT - 1 - y][x] = ("â”‚", style_of(cols[x]))
+        grid[_CHART_HEIGHT - 1 - level[-1]][-1] = ("â”€", style_of(cols[-1]))
 
     draw(benchmark, lambda v: "cyan")
     draw(fund, lambda v: "bold green" if v >= baseline else "bold red")
@@ -195,16 +195,16 @@ def _render_chart(
         level = _CHART_HEIGHT - 1 - row
         line = Text()
         if level in labels:
-            line.append(f"{labels[level]:>{gutter}}┤", style="dim")
+            line.append(f"{labels[level]:>{gutter}}â”¤", style="dim")
         else:
-            line.append(f"{'':>{gutter}}│", style="dim")
+            line.append(f"{'':>{gutter}}â”‚", style="dim")
         for char, style in grid[row]:
             line.append(char, style=style)
         rows.append(line)
     return rows
 
 
-_BLOCKS = " ▁▂▃▄▅▆▇█"
+_BLOCKS = " â–â–‚â–ƒâ–„â–…â–†â–‡â–ˆ"
 
 
 def render_area_chart(
@@ -213,8 +213,8 @@ def render_area_chart(
     baseline: float,
     width: int,
 ) -> list[Text]:
-    """Filled-area equity curve: the fund as a solid mass of eighth-blocks —
-    green above its starting capital, red below — with the benchmark threaded
+    """Filled-area equity curve: the fund as a solid mass of eighth-blocks â€”
+    green above its starting capital, red below â€” with the benchmark threaded
     through it as a cyan polyline. The fill is the fund's P&L made physical;
     the line is the market it has to beat.
     """
@@ -265,22 +265,22 @@ def render_area_chart(
     for x in range(plot_width - 1):
         y0, y1 = level[x], level[x + 1]
         if y0 == y1:
-            grid[_CHART_HEIGHT - 1 - y0][x] = ("─", "cyan")
+            grid[_CHART_HEIGHT - 1 - y0][x] = ("â”€", "cyan")
         else:
-            grid[_CHART_HEIGHT - 1 - y0][x] = ("╯" if y1 > y0 else "╮", "cyan")
-            grid[_CHART_HEIGHT - 1 - y1][x] = ("╭" if y1 > y0 else "╰", "cyan")
+            grid[_CHART_HEIGHT - 1 - y0][x] = ("â•¯" if y1 > y0 else "â•®", "cyan")
+            grid[_CHART_HEIGHT - 1 - y1][x] = ("â•­" if y1 > y0 else "â•°", "cyan")
             for y in range(min(y0, y1) + 1, max(y0, y1)):
-                grid[_CHART_HEIGHT - 1 - y][x] = ("│", "cyan")
-    grid[_CHART_HEIGHT - 1 - level[-1]][-1] = ("─", "cyan")
+                grid[_CHART_HEIGHT - 1 - y][x] = ("â”‚", "cyan")
+    grid[_CHART_HEIGHT - 1 - level[-1]][-1] = ("â”€", "cyan")
 
     rows: list[Text] = []
     for row in range(_CHART_HEIGHT):
         lvl = _CHART_HEIGHT - 1 - row
         line = Text()
         if lvl in labels:
-            line.append(f"{labels[lvl]:>{gutter}}┤", style="dim")
+            line.append(f"{labels[lvl]:>{gutter}}â”¤", style="dim")
         else:
-            line.append(f"{'':>{gutter}}│", style="dim")
+            line.append(f"{'':>{gutter}}â”‚", style="dim")
         for char, style in grid[row]:
             line.append(char, style=style)
         rows.append(line)
@@ -288,10 +288,10 @@ def render_area_chart(
 
 
 def cadence_identity(spec: FundSpec) -> str:
-    """How a fund's cadence reads on one line: `weekly`, or `every 30s · 09:30–16:00 ET`."""
+    """How a fund's cadence reads on one line: `weekly`, or `every 30s Â· 09:30â€“16:00 ET`."""
     if not spec.is_intraday:
         return spec.rebalance
-    return f"{spec.cadence_label} · {spec.window.label}"
+    return f"{spec.cadence_label} Â· {spec.window.label}"
 
 
 def session_label(session: str) -> str:
@@ -299,3 +299,4 @@ def session_label(session: str) -> str:
     if is_intraday(session):
         return f"{session[:10]} {session[11:]} ET"
     return session
+

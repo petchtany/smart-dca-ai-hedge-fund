@@ -1,5 +1,20 @@
 [
   {
+    "display_name": "Gemini 2.5 Flash",
+    "model_name": "gemini-2.5-flash",
+    "provider": "Google"
+  },
+  {
+    "display_name": "Gemini 2.5 Pro",
+    "model_name": "gemini-2.5-pro",
+    "provider": "Google"
+  },
+  {
+    "display_name": "Gemini 3.8 Flash",
+    "model_name": "gemini-3.8-flash",
+    "provider": "Google"
+  },
+  {
     "display_name": "Opus 5.5",
     "model_name": "claude-opus-5-5",
     "provider": "Anthropic"
@@ -38,10 +53,5 @@
     "display_name": "Kimi K3",
     "model_name": "kimi-k3",
     "provider": "Kimi"
-  },
-  {
-    "display_name": "Gemini 3.8 Flash",
-    "model_name": "gemini-3.8-flash",
-    "provider": "Google"
   }
 ]

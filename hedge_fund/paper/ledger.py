@@ -1,4 +1,4 @@
-"""The ledger — a paper fund's append-only book of record.
+﻿"""The ledger â€” a paper fund's append-only book of record.
 
 One JSON file per session under ledger/, each SessionRecord carrying the
 hash of the one before it. The fund's state (positions, cash, the pending
@@ -20,7 +20,7 @@ ignores checkpoints and verifies every link, as `aihf paper status --verify`
 does. A checkpoint is a cache of the chain, never a substitute for it.
 
 control.json is the kill switch. It is read into FundState.halted by
-`replay`, and `advance` checks it first — so no client of the engine (CLI,
+`replay`, and `advance` checks it first â€” so no client of the engine (CLI,
 TUI, cron) can trade a halted fund by forgetting to look.
 """
 
@@ -138,7 +138,7 @@ class Ledger:
         keep = self.records_dir / SUPERSEDED_SUBDIR
         keep.mkdir(exist_ok=True)
         safe = latest.session.replace(":", "")
-        self.path(latest.session).rename(keep / f"{safe}.{latest.hash[:12]}.json")
+        self.path(latest.session).replace(keep / f"{safe}.{latest.hash[:12]}.json")
         checkpoint = self.checkpoint_path(session_date(latest.session))
         if checkpoint.exists():
             checkpoint.unlink()
@@ -257,3 +257,4 @@ class Ledger:
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
+

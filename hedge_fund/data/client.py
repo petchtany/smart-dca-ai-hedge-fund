@@ -1,4 +1,4 @@
-"""Financial Datasets API client."""
+"""Financial Datasets API client (with automatic Yahoo Finance free fallback)."""
 
 from __future__ import annotations
 
@@ -25,6 +25,16 @@ from hedge_fund.data.models import (
 )
 from hedge_fund.data.screener import OrderBy, SCREEN_LIMIT, ScreenerFields, ScreenFilter, ScreenRow
 from hedge_fund.data.wallet import payment_session, WALLET_KEY_ENV
+from hedge_fund.data.yf_provider import (
+    yf_get_company_facts,
+    yf_get_earnings,
+    yf_get_earnings_history,
+    yf_get_financial_metrics,
+    yf_get_insider_trades,
+    yf_get_news,
+    yf_get_prices,
+    yf_get_snapshot,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -33,12 +43,11 @@ API_KEY_ENV = "FINANCIAL_DATASETS_API_KEY"
 # x402 answers only this far back; older dates get a 403 with the window start.
 X402_HISTORY_DAYS = 365
 
+_DUMMY_KEYS = {"", "your-financial-datasets-api-key", "yfinance", "free", "0x-your-wallet-private-key"}
+
 
 def payment_error(resp: requests.Response) -> str:
-    """Why a paid retry still came back 402. The body carries only the
-    generic "Payment required"; the reason (no USDC, a rejected signature,
-    a blocked payer) is the ``error`` field of the base64 JSON in the
-    PAYMENT-REQUIRED header."""
+    """Why a paid retry still came back 402."""
     header = resp.headers.get("PAYMENT-REQUIRED", "")
     try:
         terms = json.loads(base64.b64decode(header + "=" * (-len(header) % 4)))
@@ -48,20 +57,13 @@ def payment_error(resp: requests.Response) -> str:
 
 
 def has_data_credential() -> bool:
-    """True when the environment holds something a request can be billed to:
-    an API key, or a wallet to pay per call with x402. The one place that
-    decides it, so the TUI gates and the client cannot disagree."""
-    return bool(os.environ.get(API_KEY_ENV) or os.environ.get(WALLET_KEY_ENV))
+    """Always True since Yahoo Finance (yfinance) provides free market data."""
+    return True
 
 
 @dataclass
 class CallMeter:
-    """How many requests actually went to the API, by path.
-
-    Counts attempts: a retry and every pagination page each count once,
-    because each is a billable call on x402. Cache hits never reach the
-    client, so they are never counted. Share one meter across the clients
-    of a run to see what the run cost."""
+    """How many requests actually went to the API, by path."""
 
     calls: int = 0
     by_path: Counter[str] = field(default_factory=Counter)
@@ -72,10 +74,7 @@ class CallMeter:
 
 
 class FDClientError(Exception):
-    """An API request failed for infrastructure reasons (auth, rate limit,
-    server error, network). Distinct from "no data exists" — that returns
-    empty. A backtest must crash on this, not treat it as no-data.
-    """
+    """An API request failed for infrastructure reasons."""
 
     def __init__(self, message: str, *, status_code: int | None = None, path: str | None = None) -> None:
         super().__init__(message)
@@ -84,13 +83,7 @@ class FDClientError(Exception):
 
 
 class FDClient:
-    """Financial Datasets API client.
-
-    Usage::
-
-        with FDClient() as fd:
-            prices = fd.get_prices("AAPL", "2024-01-01", "2024-12-31")
-    """
+    """Financial Datasets API client with automatic Yahoo Finance fallback."""
 
     BASE_URL = "https://api.financialdatasets.ai"
     _RETRY_DELAYS = (5, 15, 30)
@@ -102,13 +95,10 @@ class FDClient:
         timeout: float = 30.0,
         meter: CallMeter | None = None,
     ) -> None:
-        """An API key bills the account; otherwise a wallet key pays each
-        call with x402. Both set means the key wins, which is the API's own
-        rule: a request carrying X-API-KEY is never charged to a wallet.
-        *meter* counts the requests this client sends; pass one meter to
-        every client of a run to count the run."""
-        self._api_key = api_key or os.environ.get(API_KEY_ENV, "")
-        self._wallet_key = wallet_key or os.environ.get(WALLET_KEY_ENV, "")
+        raw_api = api_key if api_key is not None else os.environ.get(API_KEY_ENV, "")
+        raw_wallet = wallet_key if wallet_key is not None else os.environ.get(WALLET_KEY_ENV, "")
+        self._api_key = "" if raw_api.strip() in _DUMMY_KEYS else raw_api.strip()
+        self._wallet_key = "" if raw_wallet.strip() in _DUMMY_KEYS else raw_wallet.strip()
         self._timeout = timeout
         self.meter = meter if meter is not None else CallMeter()
         if self.pays_per_call():
@@ -118,7 +108,11 @@ class FDClient:
                 raise FDClientError(str(exc)) from exc
         else:
             self._session = requests.Session()
-            self._session.headers["X-API-Key"] = self._api_key
+            if self._api_key:
+                self._session.headers["X-API-Key"] = self._api_key
+
+    def _use_yfinance(self) -> bool:
+        return not self._api_key and not self._wallet_key
 
     def pays_per_call(self) -> bool:
         """Whether requests go out keyless and pay with x402."""
@@ -151,22 +145,36 @@ class FDClient:
         interval_multiplier: int = 1,
     ) -> list[Price]:
         """Fetch OHLC price bars."""
-        data = self._get("/prices/", {
-            "ticker": ticker,
-            "interval": interval,
-            "interval_multiplier": interval_multiplier,
-            "start_date": start_date,
-            "end_date": end_date,
-        }, response_key="prices")
-        return [Price(**row) for row in data] if data else []
+        if self._use_yfinance():
+            return yf_get_prices(ticker, start_date, end_date, interval, interval_multiplier)
+        try:
+            data = self._get("/prices/", {
+                "ticker": ticker,
+                "interval": interval,
+                "interval_multiplier": interval_multiplier,
+                "start_date": start_date,
+                "end_date": end_date,
+            }, response_key="prices")
+            return [Price(**row) for row in data] if data else []
+        except FDClientError as exc:
+            if exc.status_code in (401, 402, 403):
+                return yf_get_prices(ticker, start_date, end_date, interval, interval_multiplier)
+            raise
 
     def get_snapshot(self, ticker: str) -> PriceSnapshot | None:
         """Fetch the real-time quote. None if the ticker is unknown."""
-        resp = self._request("GET", "/prices/snapshot/", params={"ticker": ticker})
-        if resp is None:
-            return None
-        row = resp.json().get("snapshot")
-        return PriceSnapshot(**row) if row else None
+        if self._use_yfinance():
+            return yf_get_snapshot(ticker)
+        try:
+            resp = self._request("GET", "/prices/snapshot/", params={"ticker": ticker})
+            if resp is None:
+                return None
+            row = resp.json().get("snapshot")
+            return PriceSnapshot(**row) if row else None
+        except FDClientError as exc:
+            if exc.status_code in (401, 402, 403):
+                return yf_get_snapshot(ticker)
+            raise
 
     # ------------------------------------------------------------------
     # Financial Metrics
@@ -179,22 +187,21 @@ class FDClient:
         period: str = "ttm",
         limit: int = 10,
     ) -> list[FinancialMetrics]:
-        """Fetch financial metrics that were PUBLIC as of *end_date*.
-
-        Point-in-time: filters on ``filing_date`` (when the SEC filing was
-        accepted, ET) — not ``report_period`` (the fiscal period end, which
-        precedes public availability by 3-6 weeks and would leak the future
-        into a backtest). Rows without a known filing_date are excluded
-        server-side, so everything returned was provably knowable on
-        *end_date*.
-        """
-        data = self._get("/financial-metrics/", {
-            "ticker": ticker,
-            "filing_date_lte": end_date,
-            "period": period,
-            "limit": limit,
-        }, response_key="financial_metrics")
-        return [FinancialMetrics(**row) for row in data] if data else []
+        """Fetch financial metrics that were PUBLIC as of *end_date*."""
+        if self._use_yfinance():
+            return yf_get_financial_metrics(ticker, end_date, period, limit)
+        try:
+            data = self._get("/financial-metrics/", {
+                "ticker": ticker,
+                "filing_date_lte": end_date,
+                "period": period,
+                "limit": limit,
+            }, response_key="financial_metrics")
+            return [FinancialMetrics(**row) for row in data] if data else []
+        except FDClientError as exc:
+            if exc.status_code in (401, 402, 403):
+                return yf_get_financial_metrics(ticker, end_date, period, limit)
+            raise
 
     # ------------------------------------------------------------------
     # News
@@ -207,14 +214,19 @@ class FDClient:
         start_date: str | None = None,
         limit: int = 1000,
     ) -> list[CompanyNews]:
-        """Fetch company news: the newest items first, at most *limit*.
-        /news/ serves no more than NEWS_PAGE per request and rejects a
-        larger ask, so the request is clamped to what it can answer."""
-        params: dict = {"ticker": ticker, "end_date": end_date, "limit": min(limit, NEWS_PAGE)}
-        if start_date is not None:
-            params["start_date"] = start_date
-        data = self._get("/news/", params, response_key="news")
-        return [CompanyNews(**row) for row in data] if data else []
+        """Fetch company news: the newest items first, at most *limit*."""
+        if self._use_yfinance():
+            return yf_get_news(ticker, end_date, start_date, limit)
+        try:
+            params: dict = {"ticker": ticker, "end_date": end_date, "limit": min(limit, NEWS_PAGE)}
+            if start_date is not None:
+                params["start_date"] = start_date
+            data = self._get("/news/", params, response_key="news")
+            return [CompanyNews(**row) for row in data] if data else []
+        except FDClientError as exc:
+            if exc.status_code in (401, 402, 403):
+                return yf_get_news(ticker, end_date, start_date, limit)
+            raise
 
     # ------------------------------------------------------------------
     # Insider Trades
@@ -228,11 +240,18 @@ class FDClient:
         limit: int = 1000,
     ) -> list[InsiderTrade]:
         """Fetch insider trades."""
-        params: dict = {"ticker": ticker, "filing_date_lte": end_date, "limit": limit}
-        if start_date is not None:
-            params["filing_date_gte"] = start_date
-        data = self._get("/insider-trades/", params, response_key="insider_trades")
-        return [InsiderTrade(**row) for row in data] if data else []
+        if self._use_yfinance():
+            return yf_get_insider_trades(ticker, end_date, start_date, limit)
+        try:
+            params: dict = {"ticker": ticker, "filing_date_lte": end_date, "limit": limit}
+            if start_date is not None:
+                params["filing_date_gte"] = start_date
+            data = self._get("/insider-trades/", params, response_key="insider_trades")
+            return [InsiderTrade(**row) for row in data] if data else []
+        except FDClientError as exc:
+            if exc.status_code in (401, 402, 403):
+                return yf_get_insider_trades(ticker, end_date, start_date, limit)
+            raise
 
     # ------------------------------------------------------------------
     # Company Facts
@@ -240,44 +259,56 @@ class FDClient:
 
     def get_company_facts(self, ticker: str) -> CompanyFacts | None:
         """Fetch company metadata (single record)."""
-        resp = self._request("GET", "/company/facts/", params={"ticker": ticker})
-        if resp is None:
-            return None
-        facts_data = resp.json().get("company_facts")
-        return CompanyFacts(**facts_data) if facts_data else None
+        if self._use_yfinance():
+            return yf_get_company_facts(ticker)
+        try:
+            resp = self._request("GET", "/company/facts/", params={"ticker": ticker})
+            if resp is None:
+                return None
+            facts_data = resp.json().get("company_facts")
+            return CompanyFacts(**facts_data) if facts_data else None
+        except FDClientError as exc:
+            if exc.status_code in (401, 402, 403):
+                return yf_get_company_facts(ticker)
+            raise
 
     # ------------------------------------------------------------------
     # Earnings
     # ------------------------------------------------------------------
 
     def get_earnings(self, ticker: str) -> Earnings | None:
-        """Fetch latest earnings for a single ticker.
-
-        limit=1 (one report period) — only [0] is used, and without a limit
-        the pagination loop in _get would walk the ticker's entire feed.
-        """
-        data = self._get("/earnings/", {"ticker": ticker, "limit": 1}, response_key="earnings")
-        if not data:
-            return None
-        row = data[0] if isinstance(data, list) else data
-        return Earnings(**row)
+        """Fetch latest earnings for a single ticker."""
+        if self._use_yfinance():
+            return yf_get_earnings(ticker)
+        try:
+            data = self._get("/earnings/", {"ticker": ticker, "limit": 1}, response_key="earnings")
+            if not data:
+                return None
+            row = data[0] if isinstance(data, list) else data
+            return Earnings(**row)
+        except FDClientError as exc:
+            if exc.status_code in (401, 402, 403):
+                return yf_get_earnings(ticker)
+            raise
 
     def get_earnings_history(
         self,
         ticker: str,
         limit: int = 12,
     ) -> list[EarningsRecord]:
-        """Fetch historical earnings filings as a flat list.
-
-        Returns one record per SEC filing (8-K, 10-Q, 10-K, 20-F).
-        The same ``report_period`` may appear multiple times with
-        different ``source_type`` values.
-        """
-        data = self._get("/earnings/", {
-            "ticker": ticker,
-            "limit": limit,
-        }, response_key="earnings")
-        return [EarningsRecord(**row) for row in data] if data else []
+        """Fetch historical earnings filings as a flat list."""
+        if self._use_yfinance():
+            return yf_get_earnings_history(ticker, limit)
+        try:
+            data = self._get("/earnings/", {
+                "ticker": ticker,
+                "limit": limit,
+            }, response_key="earnings")
+            return [EarningsRecord(**row) for row in data] if data else []
+        except FDClientError as exc:
+            if exc.status_code in (401, 402, 403):
+                return yf_get_earnings_history(ticker, limit)
+            raise
 
     # ------------------------------------------------------------------
     # Screener
@@ -291,18 +322,12 @@ class FDClient:
         order_by: OrderBy | None = None,
         limit: int = SCREEN_LIMIT,
     ) -> list[ScreenRow]:
-        """The companies that passed *filters* on *as_of*, judged from each
-        one's newest filing made public on or before that date.
-
-        *as_of* is required on purpose: without it the API screens today's
-        numbers, which is lookahead inside a backtest. A 404 raises: this
-        endpoint answers "nothing passed" with an empty list, so a 404 is a
-        missing endpoint or entitlement, not a data fact.
-        """
         if not as_of:
             raise ValueError("screen needs an as_of date: a screen without one reads today's numbers")
         if not filters:
             raise ValueError("screen needs at least one filter")
+        if self._use_yfinance():
+            return []
         path = "/financials/search/screener"
         body: dict = {"as_of": as_of, "filters": [item.model_dump() for item in filters], "limit": limit}
         if order_by is not None:
@@ -313,7 +338,8 @@ class FDClient:
         return [ScreenRow.from_api(row) for row in resp.json().get("results") or []]
 
     def screener_fields(self) -> ScreenerFields:
-        """The fields, operators, sectors, and industries the screener accepts."""
+        if self._use_yfinance():
+            return ScreenerFields(fields=[], operators=[], sectors=[], industries=[])
         path = "/financials/search/screener/filters"
         resp = self._request("GET", path)
         if resp is None:
@@ -327,8 +353,8 @@ class FDClient:
     def get_market_cap(self, ticker: str, end_date: str) -> float | None:
         """Return market cap from company facts or financial metrics."""
         facts = self.get_company_facts(ticker)
-        if facts is not None and facts.market_cap is not None:
-            return facts.market_cap
+        if facts is not None and getattr(facts, "market_cap", None) is not None:
+            return getattr(facts, "market_cap")
         metrics = self.get_financial_metrics(ticker, end_date, limit=1)
         if metrics and metrics[0].market_cap is not None:
             return metrics[0].market_cap
@@ -344,17 +370,6 @@ class FDClient:
         params: dict,
         response_key: str,
     ) -> list[dict] | None:
-        """GET and extract *response_key*, following pagination to the end.
-
-        The API caps every list response at a fixed page size and links the
-        remainder via ``next_page_url`` (absolute, self-contained — request
-        it verbatim, no params). This loop reassembles the full result the
-        caller asked for, so everything above it — including the disk cache,
-        which memoizes the *merged* list — never sees a truncated page.
-
-        A mid-walk 404 ends the stream and keeps the rows accumulated so
-        far; any other failure raises via _request's fail-loud contract.
-        """
         resp = self._request("GET", path, params=params)
         if resp is None:
             return None
@@ -376,20 +391,6 @@ class FDClient:
         path: str,
         **kwargs,
     ) -> requests.Response | None:
-        """HTTP request with retry on 429 and 503.
-
-        Fail-loud contract: raises FDClientError on network errors, HTTP
-        errors, and exhausted retries. Returns None ONLY for 404 — "this
-        data doesn't exist" is a data fact, not a failure. Silently
-        returning empty on real failures poisons backtests (missing data
-        reads as "no signal").
-
-        503 is retried like 429: x402's payment facilitator answers 503 with
-        Retry-After when it is briefly down, and nothing is charged for it.
-
-        *path* may be an absolute URL (a ``next_page_url`` from a previous
-        response), which is requested verbatim.
-        """
         url = path if path.startswith("http") else self.BASE_URL + path
         for attempt, delay in enumerate((*self._RETRY_DELAYS, None)):
             self.meter.record(url)

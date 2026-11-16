@@ -1,14 +1,4 @@
-"""LLM provider protocol + the concrete clients.
-
-Mirrors the DataClient pattern (hedge_fund/data/protocol.py): agents depend on the
-`LLMClient` protocol, never a concrete provider. Any class with a
-`complete(system, user) -> str` method plugs in — community providers welcome.
-
-We deliberately do NOT use langchain's structured-output machinery: its
-forced-tool mode breaks on Anthropic reasoning models (v1 carries the same
-workaround). For chat providers, we ask for JSON in the prompt and parse it
-ourselves; Jev adapts native typed answers into the same JSON contract.
-"""
+"""LLM provider protocol + the concrete clients."""
 
 from __future__ import annotations
 
@@ -17,6 +7,7 @@ import json
 import math
 import os
 import re
+import threading
 import time
 from collections.abc import Callable
 from datetime import datetime, timezone
@@ -33,10 +24,24 @@ from hedge_fund.llm.registry import (
     SUPPORTED_PROVIDERS,
 )
 
-DEFAULT_MODEL = "claude-opus-5-5"
+DEFAULT_MODEL = "gemini-2.5-flash"
 
 # Called with each piece of text as it arrives. None means don't stream.
 TokenListener = Callable[[str], None] | None
+
+# Google Gemini free-tier model pool (each has its own separate rate/daily quota)
+_GOOGLE_POOL = (
+    "gemini-3.5-flash",
+    "gemini-3.6-flash",
+    "gemini-3.5-flash-lite",
+    "gemini-3.1-flash-lite",
+    "gemini-2.5-flash",
+    "gemini-2.5-pro",
+    "gemini-3.8-flash",
+)
+_GOOGLE_LOCK = threading.Lock()
+_GOOGLE_RR_INDEX = 0
+_GOOGLE_EXHAUSTED: set[str] = set()
 
 
 class LLMParseError(ValueError):
@@ -53,15 +58,7 @@ class LLMCallError(RuntimeError):
 
 @runtime_checkable
 class LLMClient(Protocol):
-    """Protocol all LLM providers must satisfy.
-
-    complete() returns text (native text or an adapter's compatibility JSON).
-    Providers may optionally implement cache_key(agent, system, user) when
-    their request contains additional semantics beyond the two prompts.
-    Providers should raise on
-    transport failure — the LLMAgent layer decides to abstain, not the
-    provider.
-    """
+    """Protocol all LLM providers must satisfy."""
 
     model: str
 
@@ -69,17 +66,7 @@ class LLMClient(Protocol):
 
 
 class ChatLLM:
-    """A langchain chat model behind the LLMClient protocol.
-
-    Chat providers share this wrapper — only *constructing* the chat model
-    differs, and that lives in make_llm(). Their response handling is written
-    once; JevLLM handles TypeSafe's native typed responses separately.
-
-    With an `on_token` listener the same call streams: the listener sees text
-    as it arrives, and complete() still returns the whole response. Watching
-    is a property of the client, not of the caller — so LLMAgent.predict(),
-    the prompt cache, and the parse are untouched by it.
-    """
+    """A langchain chat model behind the LLMClient protocol."""
 
     def __init__(self, model: str, chat, on_token: TokenListener = None) -> None:
         self.model = model
@@ -91,9 +78,6 @@ class ChatLLM:
         if self._on_token is None:
             return _flatten(self._chat.invoke(messages).content)
 
-        # Streaming chunks concatenate into the response, so they flatten
-        # without a separator — the "\n" that joins whole-message blocks would
-        # land mid-word here.
         parts: list[str] = []
         for chunk in self._chat.stream(messages):
             text = _flatten(chunk.content, sep="")
@@ -103,13 +87,78 @@ class ChatLLM:
         return "".join(parts)
 
 
-class JevLLM:
-    """Native TypeSafe adapter returning compatibility JSON without streaming.
+class GoogleRotatingLLM:
+    """Google Gemini client with automatic round-robin load balancing and
+    quota-exhaustion fallback across all available Gemini Flash/Pro models."""
 
-    Provider metadata travels with the result so cache replay needs no mutable
-    last-response state. Native response bodies are preserved except for echoed
-    credentials, which are redacted. Credentials are passed in explicitly.
-    """
+    def __init__(
+        self,
+        model: str,
+        api_key: str,
+        timeout: float = 60.0,
+        on_token: TokenListener = None,
+    ) -> None:
+        self.model = model
+        self._api_key = api_key
+        self._timeout = timeout
+        self._on_token = on_token
+
+    def _ordered_candidates(self) -> list[str]:
+        global _GOOGLE_RR_INDEX
+        with _GOOGLE_LOCK:
+            active = [m for m in _GOOGLE_POOL if m not in _GOOGLE_EXHAUSTED]
+            if not active:
+                active = list(_GOOGLE_POOL)
+            start = _GOOGLE_RR_INDEX % len(active)
+            _GOOGLE_RR_INDEX += 1
+            rotated = active[start:] + active[:start]
+            if self.model not in _GOOGLE_EXHAUSTED and self.model not in rotated:
+                rotated.insert(0, self.model)
+            return rotated
+
+    def complete(self, system: str, user: str) -> str:
+        from langchain_google_genai import ChatGoogleGenerativeAI
+
+        messages = [("system", system), ("human", user)]
+        last_exc: Exception | None = None
+        candidates = self._ordered_candidates()
+
+        for candidate in candidates:
+            try:
+                chat = ChatGoogleGenerativeAI(
+                    model=candidate,
+                    api_key=self._api_key,
+                    timeout=self._timeout,
+                    max_retries=0,
+                    api_version="v1beta",
+                )
+                if self._on_token is None:
+                    return _flatten(chat.invoke(messages).content)
+
+                parts: list[str] = []
+                for chunk in chat.stream(messages):
+                    text = _flatten(chunk.content, sep="")
+                    if text:
+                        parts.append(text)
+                        self._on_token(text)
+                return "".join(parts)
+            except Exception as exc:
+                last_exc = exc
+                err_str = str(exc)
+                if "PerDay" in err_str or "NOT_FOUND" in err_str or "404" in err_str:
+                    with _GOOGLE_LOCK:
+                        _GOOGLE_EXHAUSTED.add(candidate)
+                elif "429" in err_str or "RESOURCE_EXHAUSTED" in err_str:
+                    time.sleep(1.0)
+                continue
+
+        if last_exc is not None:
+            raise last_exc
+        raise LLMCallError("All Google Gemini candidate models failed")
+
+
+class JevLLM:
+    """Native TypeSafe adapter returning compatibility JSON without streaming."""
 
     ENDPOINT = "https://api.typesafe.ai/v1/systemone"
     _RETRY_STATUSES = frozenset({429, 500, 502, 503, 504, 529})
@@ -149,8 +198,6 @@ class JevLLM:
 
         def fail(category: str, message: str) -> None:
             diagnostics.update(failure_category=category, elapsed_seconds=time.monotonic() - started)
-            # Do not chain transport exceptions: their message/request can carry
-            # credentials. Diagnostics intentionally omit all HTTP headers.
             raise LLMCallError(message, self._redact(diagnostics)) from None
 
         for attempt in range(1, 3):
@@ -228,17 +275,10 @@ def make_llm(
     max_tokens: int = 4096,
     on_token: TokenListener = None,
 ) -> LLMClient:
-    """Build the client for a model id, routed by the registry's provider.
-
-    The id comes from the caller, else HEDGE_FUND_LLM_MODEL, else DEFAULT_MODEL — the
-    same seam the TUI's picker writes to. Raises with the name of the missing
-    environment variable, because that is the only thing the user can act on.
-    """
+    """Build the client for a model id, routed by the registry's provider."""
     model = model or os.environ.get("HEDGE_FUND_LLM_MODEL") or DEFAULT_MODEL
     provider = provider_for(model)
     if provider is None:
-        # Unlisted ids still work: a model newer than the registry should not
-        # need a code change. Anthropic is the default transport.
         provider = "Anthropic"
     if not is_supported(provider):
         raise ValueError(
@@ -249,8 +289,10 @@ def make_llm(
     api_key = _require_key(provider)
 
     if provider == "TypeSafe":
-        # Typed judgments have no generated tokens or output-token budget.
         return JevLLM(api_key=api_key, model=model, timeout=timeout)
+
+    if provider == "Google":
+        return GoogleRotatingLLM(model=model, api_key=api_key, timeout=timeout, on_token=on_token)
 
     if provider == "Anthropic":
         from langchain_anthropic import ChatAnthropic
@@ -264,17 +306,11 @@ def make_llm(
         from langchain_deepseek import ChatDeepSeek
         chat = ChatDeepSeek(model=model, api_key=api_key, timeout=timeout,
                             max_retries=1)
-    elif provider == "Google":
-        from langchain_google_genai import ChatGoogleGenerativeAI
-        chat = ChatGoogleGenerativeAI(model=model, api_key=api_key,
-                                      timeout=timeout, max_retries=1)
     elif provider == "xAI":
         from langchain_xai import ChatXAI
         chat = ChatXAI(model=model, api_key=api_key, timeout=timeout,
                        max_retries=1)
     elif provider == "Kimi":
-        # Moonshot speaks the OpenAI wire format. Default to the international
-        # host; mainland users override with MOONSHOT_BASE_URL (v1 does the same).
         from langchain_openai import ChatOpenAI
         chat = ChatOpenAI(
             model=model, api_key=api_key, timeout=timeout, max_retries=1,
@@ -287,23 +323,12 @@ def make_llm(
 
 
 def AnthropicLLM(model: str | None = None, **kwargs) -> LLMClient:  # noqa: N802
-    """Back-compat shim: v2 was Anthropic-only, and this name is exported.
-    Prefer make_llm(), which honours whichever model is selected."""
+    """Back-compat shim: v2 was Anthropic-only, and this name is exported."""
     return make_llm(model or DEFAULT_MODEL, **kwargs)
 
 
 def _flatten(content, sep: str = "\n") -> str:
-    """One provider's response as plain text.
-
-    Reasoning models (Anthropic extended thinking, and Gemini/DeepSeek in
-    their thinking modes) return a LIST of blocks rather than a string. Only
-    the text blocks are the answer — a thinking block stringified into the
-    payload is prose in front of the JSON, which is exactly what breaks the
-    parse. Mirrors v1's extract_json_from_response (src/utils/llm.py:109).
-
-    *sep* joins the blocks: "\\n" for a whole message, "" for a stream chunk
-    whose blocks are fragments of one continuing string.
-    """
+    """One provider's response as plain text."""
     if isinstance(content, str):
         return content
     if isinstance(content, list):
@@ -320,7 +345,6 @@ def _flatten(content, sep: str = "\n") -> str:
 def _require_key(provider: str) -> str:
     """The provider's API key, or a failure that names the variable to set."""
     env_var = env_var_for(provider)
-    # Kimi accepts either name; v1 reads MOONSHOT_API_KEY first.
     key = (os.getenv("MOONSHOT_API_KEY") if provider == "Kimi" else None)
     key = key or (os.getenv(env_var) if env_var else None)
     if not key:
@@ -331,11 +355,7 @@ def _require_key(provider: str) -> str:
 
 
 def extract_json(text: str) -> dict:
-    """Pull the first JSON object out of an LLM response.
-
-    Tries: ```json fence -> whole string -> first balanced {...} block.
-    Raises LLMParseError if nothing parses.
-    """
+    """Pull the first JSON object out of an LLM response."""
     fence = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL)
     if fence:
         try:

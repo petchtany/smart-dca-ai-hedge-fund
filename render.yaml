@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: smart-dca-ai-advisor
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python trade_plan.py --serve-only
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.0
+      - key: GOOGLE_API_KEY
+        sync: false
