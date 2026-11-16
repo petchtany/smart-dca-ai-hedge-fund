@@ -14,6 +14,7 @@ import ctypes
 import hashlib
 import json
 import math
+import os
 import sys
 import time
 import webbrowser
@@ -35,13 +36,12 @@ if str(ROOT_DIR) not in sys.path:
 from hedge_fund.llm import extract_json, make_llm
 from hedge_fund.tui.keys import apply_credentials
 
-PAPER_DIR = Path.home() / ".hedge-fund" / "paper"
-if not PAPER_DIR.is_dir():
-    PAPER_DIR = Path(r"C:\Users\P\.hedge-fund\paper")
-
-CIO_CACHE_DIR = Path(r"C:\Users\P\.hedge-fund\cache\cio_dca")
-TICKER_CACHE_DIR = Path(r"C:\Users\P\.hedge-fund\cache\ticker_dca")
-WATCHLIST_FILE = Path(r"C:\Users\P\.hedge-fund\watchlist.json")
+_WIN_BASE = Path(r"C:\Users\P\.hedge-fund")
+BASE_HEDGE_DIR = _WIN_BASE if (sys.platform == "win32" and _WIN_BASE.exists()) else (Path.home() / ".hedge-fund")
+PAPER_DIR = BASE_HEDGE_DIR / "paper"
+CIO_CACHE_DIR = BASE_HEDGE_DIR / "cache" / "cio_dca"
+TICKER_CACHE_DIR = BASE_HEDGE_DIR / "cache" / "ticker_dca"
+WATCHLIST_FILE = BASE_HEDGE_DIR / "watchlist.json"
 TICKER_CACHE_TTL_SEC = 1800  # 30 minutes fast cache for instant incremental adds
 
 
