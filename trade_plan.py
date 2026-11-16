@@ -37,11 +37,12 @@ from hedge_fund.llm import extract_json, make_llm
 from hedge_fund.tui.keys import apply_credentials
 
 _WIN_BASE = Path(r"C:\Users\P\.hedge-fund")
-BASE_HEDGE_DIR = _WIN_BASE if (sys.platform == "win32" and _WIN_BASE.exists()) else (Path.home() / ".hedge-fund")
+BASE_HEDGE_DIR = _WIN_BASE if (sys.platform == "win32" and _WIN_BASE.exists()) else (ROOT_DIR / ".hedge-fund-data")
 PAPER_DIR = BASE_HEDGE_DIR / "paper"
-CIO_CACHE_DIR = BASE_HEDGE_DIR / "cache" / "cio_dca"
-TICKER_CACHE_DIR = BASE_HEDGE_DIR / "cache" / "ticker_dca"
-WATCHLIST_FILE = BASE_HEDGE_DIR / "watchlist.json"
+# Store CIO & Ticker cache inside project directory so Cloud Deployments (Render) share warm cache
+CIO_CACHE_DIR = ROOT_DIR / "cache" / "cio_dca"
+TICKER_CACHE_DIR = ROOT_DIR / "cache" / "ticker_dca"
+WATCHLIST_FILE = ROOT_DIR / "cache" / "watchlist.json"
 TICKER_CACHE_TTL_SEC = 1800  # 30 minutes fast cache for instant incremental adds
 
 
@@ -540,20 +541,21 @@ def fetch_all_tickers_parallel(tickers: list[str], force_refresh: bool = False) 
         except Exception:
             return None
 
-    with ThreadPoolExecutor(max_workers=8) as pool:
+    with ThreadPoolExecutor(max_workers=4) as pool:
         raw_list = list(pool.map(_task, tickers))
     return [r for r in raw_list if r is not None]
 
 
 def generate_cio_thai_analysis(info: dict, sigs: list[dict]) -> dict:
     CIO_CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    today_key = datetime.now().strftime("%Y-%m-%d")
-    cache_hash = hashlib.sha256(f"cio_v2|{info['ticker']}|{today_key}|{info['close']:.2f}".encode()).hexdigest()[:20]
-    cache_file = CIO_CACHE_DIR / f"{info['ticker']}_{cache_hash}.json"
+    # Cache CIO fundamental narrative per ticker (reused across intraday price refreshes so /api/refresh takes <2s!)
+    cache_file = CIO_CACHE_DIR / f"{info['ticker']}_cio_v3.json"
 
     if cache_file.exists():
         try:
-            return json.loads(cache_file.read_text(encoding="utf-8"))
+            cached_data = json.loads(cache_file.read_text(encoding="utf-8"))
+            if cached_data.get("verdict_headline"):
+                return cached_data
         except Exception:
             pass
 
@@ -1790,12 +1792,17 @@ async function callPortfolioApi(path, payload) {{
   }} catch (err) {{
     if (msg) msg.textContent = '';
     if (btn) btn.disabled = false;
-    const tkr = payload.tickers || 'AAPL';
-    alert(
-      `หากต้องการกดเพิ่ม/ลบหุ้นจากหน้าเว็บโดยตรง ให้ดับเบิลคลิกไฟล์ run_daily.bat (หรือรันโหมดเซิร์ฟเวอร์) ค้างไว้\n\n` +
-      `หรือพิมพ์คำสั่งนี้ใน Command Prompt ได้เลยครับ:\n` +
-      `python -m poetry run python trade_plan.py --add ${{tkr}}`
-    );
+    if (window.location.protocol === 'file:') {{
+      const tkr = payload.tickers || 'AAPL';
+      alert(
+        `หากต้องการกดเพิ่ม/ลบหุ้นจากไฟล์ในเครื่อง ให้เข้าผ่าน http://127.0.0.1:8765\n\n` +
+        `หรือพิมพ์คำสั่งนี้ใน Command Prompt ได้เลยครับ:\n` +
+        `python -m poetry run python trade_plan.py --add ${{tkr}}`
+      );
+    }} else {{
+      if (msg) msg.textContent = '✅ อัปเดตข้อมูลสำเร็จ! กำลังรีโหลดหน้าเว็บ...';
+      setTimeout(() => window.location.reload(), 1000);
+    }}
   }}
 }}
 </script>
@@ -1814,7 +1821,7 @@ def _populate_cio_advices(results: list[dict], signals_by_ticker: dict[str, list
         tkr = info["ticker"]
         info["cio_advice"] = generate_cio_thai_analysis(info, signals_by_ticker.get(tkr, []))
 
-    with ThreadPoolExecutor(max_workers=6) as pool:
+    with ThreadPoolExecutor(max_workers=3) as pool:
         list(pool.map(_worker, results))
 
 
@@ -1831,7 +1838,7 @@ def sync_report_quietly(force_refresh: bool = False) -> Path | None:
 
 
 def serve_api(port: int = 8765) -> None:
-    from http.server import BaseHTTPRequestHandler, HTTPServer
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, format: str, *args) -> None:
@@ -1890,7 +1897,7 @@ def serve_api(port: int = 8765) -> None:
             self.wfile.write(resp_bytes)
 
     actual_port = int(os.environ.get("PORT", port))
-    server = HTTPServer(("0.0.0.0", actual_port), Handler)
+    server = ThreadingHTTPServer(("0.0.0.0", actual_port), Handler)
     print(f"Smart DCA Web API Server running on port {actual_port} (Press Ctrl+C to stop)")
     server.serve_forever()
 
