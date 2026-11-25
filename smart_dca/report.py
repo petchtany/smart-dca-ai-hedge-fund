@@ -1,4 +1,4 @@
-"""HTML Dashboard generator (v4.0) with multi-currency, live USD/THB FX, CIO freshness badge, and Backtest tab."""
+"""HTML Dashboard generator (v4.1 — Clean Modern UX) with multi-currency, live FX, Macro Radar, 4Q trends, and Backtest tab."""
 
 from __future__ import annotations
 
@@ -37,12 +37,9 @@ def _format_cio_meta_badge(cio: dict[str, Any]) -> str:
         return ""
     if meta.get("cached"):
         age_h = meta.get("age_hours", 0.0)
-        if age_h < 24:
-            age_txt = f"{age_h:.1f} ชม. ที่แล้ว"
-        else:
-            age_txt = f"{age_h / 24.0:.1f} วัน ที่แล้ว"
-        return f'<span style="font-size:11.5px;color:#94a3b8;font-weight:400;margin-left:8px;">(Cache: {age_txt} · รีเฟรชอัตโนมัติทุก 7 วัน หรือเมื่อราคาขยับ ±8%)</span>'
-    return '<span style="font-size:11.5px;color:#4ade80;font-weight:600;margin-left:8px;">(อัปเดตใหม่ล่าสุด ✨)</span>'
+        age_txt = f"{age_h:.1f} ชม. ที่แล้ว" if age_h < 24 else f"{age_h / 24.0:.1f} วัน ที่แล้ว"
+        return f'<span class="cio-meta-pill">อัปเดต {age_txt} · รีเฟรชเมื่อครบ 7 วันหรือราคาขยับ ±8%</span>'
+    return '<span class="cio-meta-pill fresh">✨ วิเคราะห์ใหม่ล่าสุด</span>'
 
 
 def generate_html_report(
@@ -63,7 +60,7 @@ def generate_html_report(
         tkr = _esc(info["ticker"])
         tkr_raw = str(info["ticker"])
         comp_esc = _esc(info["company_name"])
-        comp_short_esc = _esc(str(info["company_name"])[:18])
+        comp_short_esc = _esc(str(info["company_name"])[:22])
         cur = _esc(info.get("currency_symbol") or "$")
         cur_code = str(info.get("currency") or "USD")
         chart_id = f"tv_chart_{idx}"
@@ -87,14 +84,19 @@ def generate_html_report(
             else "N/A"
         )
 
-        hit_class = "hit-badge-hot" if info["hit_status"] in ("hit_t1", "hit_t2") else "hit-badge-wait"
+        hit_class = "badge-hit" if info["hit_status"] in ("hit_t1", "hit_t2") else "badge-wait"
         is_peg_value = "1" if (info["peg_ratio"] and 0 < info["peg_ratio"] <= 1.25) else "0"
         is_hit = "1" if info["hit_status"] in ("hit_t1", "hit_t2") else "0"
         is_high_score = "1" if info["dip_score"] >= 80 else "0"
 
+        score_pill_cls = (
+            "score-high" if info["dip_score"] >= 80
+            else ("score-mid" if info["dip_score"] >= 65 else "score-low")
+        )
+
         range_bar_html = f"""
         <div class="range-wrap" title="จุดต่ำสุด 1 ปี: {cur}{info['low_52w']:.2f} | ปัจจุบัน: {cur}{info['close']:.2f} | สูงสุด 1 ปี: {cur}{info['high_52w']:.2f}">
-            <div class="range-labels"><span>L: {cur}{info['low_52w']:.0f}</span><span>H: {cur}{info['high_52w']:.0f}</span></div>
+            <div class="range-labels"><span>{cur}{info['low_52w']:.0f}</span><span>{cur}{info['high_52w']:.0f}</span></div>
             <div class="range-track">
                 <div class="range-fill" style="width:{info['pos_52w_pct']}%;"></div>
                 <div class="range-dot" style="left:{info['pos_52w_pct']}%;"></div>
@@ -106,7 +108,7 @@ def generate_html_report(
         days_ed = info.get("days_to_earnings")
         earnings_badge_html = ""
         if nxt_ed and days_ed is not None and 0 <= days_ed <= 14:
-            earnings_badge_html = f'<span style="background:rgba(245,158,11,0.2);color:#fbbf24;border:1px solid #f59e0b;padding:2px 8px;border-radius:999px;font-size:11.5px;font-weight:700;white-space:nowrap;">⚠️ งบใน {days_ed} วัน ({_esc(nxt_ed)})</span>'
+            earnings_badge_html = f'<span class="badge-warn">⚠️ งบใน {days_ed} วัน</span>'
         earnings_metric_str = (
             f"{_esc(nxt_ed)} (อีก {days_ed} วัน)"
             if (nxt_ed and days_ed is not None)
@@ -144,31 +146,41 @@ def generate_html_report(
         quarterly_section = ""
         if q_rows_html or eps_rows_html:
             q_part = f"""
-                <div style="flex:1;min-width:280px;">
-                    <div style="font-size:13px;font-weight:700;color:#38bdf8;margin-bottom:6px;">📊 แนวโน้มงบ 4 ไตรมาสล่าสุด (Revenue & Net Income)</div>
-                    <table><thead><tr><th>งวด</th><th>รายได้</th><th>กำไรสุทธิ</th><th>Net Margin</th></tr></thead><tbody>{q_rows_html}</tbody></table>
+                <div class="sub-panel">
+                    <div class="sub-panel-title">📊 งบย้อนหลัง 4 ไตรมาส (Revenue &amp; Net Income)</div>
+                    <table><thead><tr><th>งวด</th><th>รายได้</th><th>กำไรสุทธิ</th><th>Margin</th></tr></thead><tbody>{q_rows_html}</tbody></table>
                 </div>
             """ if q_rows_html else ""
             e_part = f"""
-                <div style="flex:1;min-width:280px;">
-                    <div style="font-size:13px;font-weight:700;color:#4ade80;margin-bottom:6px;">🎯 ประวัติ EPS Beat/Miss ({eps_badge_str})</div>
+                <div class="sub-panel">
+                    <div class="sub-panel-title">🎯 ประวัติ EPS Beat/Miss ({eps_badge_str})</div>
                     <table><thead><tr><th>งวด</th><th>คาดการณ์</th><th>ทำได้จริง</th><th>ผลลัพธ์</th></tr></thead><tbody>{eps_rows_html}</tbody></table>
                 </div>
             """ if eps_rows_html else ""
-            quarterly_section = f'<div class="collapsible-section" style="display:flex;flex-wrap:wrap;gap:14px;margin-bottom:16px;">{q_part}{e_part}</div>'
+            quarterly_section = f'<div class="two-col collapsible-section">{q_part}{e_part}</div>'
 
         screener_rows_html.append(f"""
-        <tr onclick="openStockDeepDive('{tkr}')" style="cursor:pointer;" title="คลิกเพื่อเปิดดูกราฟและบทวิเคราะห์เจาะลึกของ {tkr}">
-            <td><strong style="color:#38bdf8;font-size:15px;">{tkr} 🔍</strong> {earnings_badge_html}<br><small>{comp_short_esc}</small></td>
-            <td data-val="{info['close']}"><strong style="color:#facc15;">{cur}{info['close']:.2f}</strong><br><span style="color:#38bdf8;font-size:12px;">{info['drawdown_pct']:.1f}% จาก High</span></td>
+        <tr class="screener-row" data-ticker="{tkr}" data-name="{comp_esc.lower()}" data-score="{is_high_score}" data-hit="{is_hit}" data-peg="{is_peg_value}" onclick="openStockDeepDive('{tkr}')" title="คลิกเพื่อดูกราฟและแผนช้อนซื้อของ {tkr}">
+            <td>
+                <div class="cell-ticker">{tkr} {earnings_badge_html}</div>
+                <div class="cell-sub">{comp_short_esc}</div>
+            </td>
+            <td data-val="{info['close']}">
+                <div class="cell-price">{cur}{info['close']:.2f}</div>
+                <div class="cell-dd">{info['drawdown_pct']:.1f}% จาก High</div>
+            </td>
             <td data-val="{info['pos_52w_pct']}">{range_bar_html}</td>
             <td data-val="{1 if is_hit == '1' else 0}"><span class="{hit_class}">{hit_label_esc}</span></td>
-            <td data-val="{info['dip_score']}"><span style="color:{info['zone_color']};font-weight:700;font-size:16px;">{info['dip_score']}/100</span></td>
+            <td data-val="{info['dip_score']}"><span class="score-pill {score_pill_cls}">{info['dip_score']}</span></td>
             <td data-val="{info['rsi']}" class="{'green' if info['rsi'] < 40 else ''}"><strong>{info['rsi']:.1f}</strong></td>
             <td data-val="{fpe_val}">{fpe_str}</td>
             <td data-val="{peg_val}" class="{'green' if is_peg_value == '1' else ''}"><strong>{peg_str}</strong></td>
             <td data-val="{upside_val}" class="{'green' if upside_val > 20 else ''}">{ws_str}</td>
-            <td><span class="green">{cur}{info['tier1_price']:.2f}</span> / <span style="color:#22c55e;font-weight:700;">{cur}{info['tier2_price']:.2f}</span> / <span style="color:#facc15;">{cur}{info['tier3_price']:.2f}</span></td>
+            <td class="tiers-cell">
+                <span class="t1">{cur}{info['tier1_price']:.2f}</span> /
+                <span class="t2">{cur}{info['tier2_price']:.2f}</span> /
+                <span class="t3">{cur}{info['tier3_price']:.2f}</span>
+            </td>
         </tr>
         """)
 
@@ -176,11 +188,11 @@ def generate_html_report(
         for s in sigs:
             val = float(s.get("value") or 0.0)
             if val > 0.1:
-                v_badge = f'<span style="color:#22c55e;font-weight:700;">▲ มองบวก ({abs(val)*100:.0f}%)</span>'
+                v_badge = f'<span class="green">▲ มองบวก ({abs(val)*100:.0f}%)</span>'
             elif val < -0.1:
-                v_badge = f'<span style="color:#f59e0b;font-weight:700;">▼ มองราคาตึงตัว ({abs(val)*100:.0f}%)</span>'
+                v_badge = f'<span class="amber">▼ ราคาตึงตัว ({abs(val)*100:.0f}%)</span>'
             else:
-                v_badge = f'<span style="color:#94a3b8;font-weight:700;">- เป็นกลาง ({abs(val)*100:.0f}%)</span>'
+                v_badge = f'<span class="muted">- เป็นกลาง ({abs(val)*100:.0f}%)</span>'
             sig_rows += f"""
             <div class="analyst-item">
                 <div class="analyst-head">{_esc(str(s.get('model_name', '')).upper())} &middot; {v_badge}</div>
@@ -189,7 +201,7 @@ def generate_html_report(
             """
         analysts_section = f"""
         <details class="analysts-box">
-            <summary>คลิกดูความเห็นต้นฉบับจากนักวิเคราะห์ AI รายบุคคล (Buffett / Munger / Graham / Lynch / Druckenmiller)</summary>
+            <summary>ดูความเห็นต้นฉบับจากทีมนักวิเคราะห์ AI รายบุคคล</summary>
             <div class="analysts-list">{sig_rows}</div>
         </details>
         """ if sig_rows else ""
@@ -218,54 +230,57 @@ def generate_html_report(
         cio_meta_badge = _format_cio_meta_badge(cio)
 
         cards_html.append(f"""
-        <div class="card stock-card" id="stock-{tkr}" data-ticker="{tkr}" data-score="{is_high_score}" data-hit="{is_hit}" data-peg="{is_peg_value}">
+        <article class="card stock-card" id="stock-{tkr}" data-ticker="{tkr}" data-score="{is_high_score}" data-hit="{is_hit}" data-peg="{is_peg_value}">
             <div class="card-header">
-                <div style="display:flex;align-items:center;flex-wrap:wrap;gap:10px;">
+                <div class="card-title-group">
                     <span class="ticker">{tkr}</span>
                     <span class="comp-name">{comp_esc}</span>
                     <span class="price">{cur}{info['close']:.2f}</span>
-                    <span class="discount">ลดจากยอด 1 ปี: {info['drawdown_pct']:.1f}%</span>
+                    <span class="discount">{info['drawdown_pct']:.1f}% จาก High</span>
                     <span class="{hit_class}">{hit_label_esc}</span>
                     {earnings_badge_html}
                 </div>
-                <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
-                    <span class="dip-score" style="border-color:{info['zone_color']};color:{info['zone_color']}">
-                        คะแนนความน่าช้อน: {info['dip_score']}/100 &middot; {dca_mult_esc}
+                <div class="card-actions">
+                    <span class="score-pill-lg {score_pill_cls}">
+                        Score {info['dip_score']}/100 &middot; {dca_mult_esc}
                     </span>
                     <button class="btn-remove" onclick="removeStock('{tkr}')" title="ลบหุ้น {tkr} ออกจากพอร์ต">✕ ลบ</button>
                 </div>
             </div>
 
-            <div class="cio-box" style="border-left: 4px solid {info['zone_color']};">
-                <div class="cio-title">🧠 บทวิเคราะห์เจาะลึกจาก AI Chief Investment Officer {cio_meta_badge}</div>
+            <div class="cio-box">
+                <div class="cio-header-row">
+                    <span class="cio-title">บทวิเคราะห์ AI Chief Investment Officer</span>
+                    {cio_meta_badge}
+                </div>
                 <div class="cio-headline">{_esc(cio.get('verdict_headline', ''))}</div>
                 <div class="cio-grid">
                     <div class="cio-item">
-                        <strong>🔍 วิเคราะห์: โอกาสช้อน (Buy the Dip) หรือ กับดัก (Value Trap)?</strong>
+                        <strong>🔍 โอกาสช้อน (Dip) หรือ กับดัก (Trap)?</strong>
                         <p>{_esc(cio.get('dip_vs_trap_analysis', ''))}</p>
                     </div>
                     <div class="cio-item">
-                        <strong>💎 ความคุ้มค่าและ Upside เทียบเป้า Wall Street:</strong>
+                        <strong>💎 มูลค่า &amp; Upside เทียบเป้า Wall Street</strong>
                         <p>{_esc(cio.get('valuation_and_upside', ''))}</p>
                     </div>
                     <div class="cio-item">
-                        <strong>🎯 แผนเคาะซื้อและแบ่งไม้สะสม (Actionable Playbook):</strong>
+                        <strong>🎯 แผนเคาะซื้อ &amp; แบ่งไม้สะสม</strong>
                         <p>{_esc(cio.get('actionable_dca_playbook', ''))}</p>
                     </div>
                     <div class="cio-item">
-                        <strong>⚠️ ความเสี่ยงสำคัญที่ต้องระวัง:</strong>
+                        <strong>⚠️ ความเสี่ยงที่ต้องจับตา</strong>
                         <p>{_esc(cio.get('key_risk_to_watch', ''))}</p>
                     </div>
                 </div>
             </div>
 
             <div class="metrics-grid">
-                <div class="metric"><span class="label">เป้าเฉลี่ย Wall Street ({info['num_analysts']} สำนัก)</span><span class="val green">{ws_str}</span></div>
-                <div class="metric"><span class="label">Forward P/E &middot; PEG Ratio</span><span class="val cyan">{fpe_str} &middot; PEG {peg_str}</span></div>
-                <div class="metric"><span class="label">การเติบโต รายได้ / กำไร (YoY)</span><span class="val">{rev_g} / {earn_g}</span></div>
-                <div class="metric"><span class="label">ROE &middot; ต้นทุนเฉลี่ย EMA 200</span><span class="val">{roe_str} &middot; {cur}{info['ema200']:.2f} ({info['dist_ema200_pct']:+.1f}%)</span></div>
-                <div class="metric"><span class="label">โซนเจ้ามือสะสม (Volume Node)</span><span class="val green">{cur}{info['vp_node_1']:.2f}</span></div>
-                <div class="metric"><span class="label">ดัชนี RSI (14 วัน)</span><span class="val {'green' if info['rsi'] < 40 else ''}">{info['rsi']:.1f} {'(Oversold ของถูก!)' if info['rsi'] < 35 else ''}</span></div>
+                <div class="metric"><span class="label">เป้า Wall Street ({info['num_analysts']} สำนัก)</span><span class="val green">{ws_str}</span></div>
+                <div class="metric"><span class="label">Fwd P/E &middot; PEG</span><span class="val cyan">{fpe_str} &middot; {peg_str}</span></div>
+                <div class="metric"><span class="label">โต รายได้ / กำไร (YoY)</span><span class="val">{rev_g} / {earn_g}</span></div>
+                <div class="metric"><span class="label">ROE &middot; EMA 200</span><span class="val">{roe_str} &middot; {cur}{info['ema200']:.2f} ({info['dist_ema200_pct']:+.1f}%)</span></div>
+                <div class="metric"><span class="label">Volume Node</span><span class="val green">{cur}{info['vp_node_1']:.2f}</span></div>
+                <div class="metric"><span class="label">RSI (14 วัน)</span><span class="val {'green' if info['rsi'] < 40 else ''}">{info['rsi']:.1f} {'(Oversold)' if info['rsi'] < 35 else ''}</span></div>
                 <div class="metric"><span class="label">📅 วันประกาศงบถัดไป</span><span class="val" style="color:{'#fbbf24' if (days_ed is not None and days_ed <= 14) else '#e2e8f0'}">{earnings_metric_str}</span></div>
                 <div class="metric"><span class="label">🎯 ประวัติ EPS Surprise</span><span class="val green">{eps_badge_str}</span></div>
             </div>
@@ -275,54 +290,56 @@ def generate_html_report(
             <div class="chart-wrapper collapsible-section">
                 <div class="chart-legend">
                     <span><i style="background:#f59e0b"></i> EMA 50 ({cur}{info['ema50']:.2f})</span>
-                    <span><i style="background:#a855f7"></i> EMA 200 ต้นทุนระยะยาว ({cur}{info['ema200']:.2f})</span>
-                    <span><i style="background:#4ade80"></i> ไม้ 1 (30%): {cur}{info['tier1_price']:.2f}</span>
-                    <span><i style="background:#22c55e"></i> ไม้ 2 (40%): {cur}{info['tier2_price']:.2f}</span>
-                    <span><i style="background:#eab308"></i> ไม้ 3 (30%): {cur}{info['tier3_price']:.2f}</span>
+                    <span><i style="background:#a855f7"></i> EMA 200 ({cur}{info['ema200']:.2f})</span>
+                    <span><i style="background:#4ade80"></i> ไม้ 1: {cur}{info['tier1_price']:.2f}</span>
+                    <span><i style="background:#22c55e"></i> ไม้ 2: {cur}{info['tier2_price']:.2f}</span>
+                    <span><i style="background:#eab308"></i> ไม้ 3: {cur}{info['tier3_price']:.2f}</span>
                 </div>
                 <div id="{chart_id}" class="tv-chart"></div>
             </div>
 
-            <table class="collapsible-section">
-                <thead>
-                    <tr>
-                        <th>ลำดับไม้ช้อนซื้อ (Buy the Dip Confluence Ladder)</th>
-                        <th>ราคาตั้งรับ (Target Buy Price)</th>
-                        <th>ส่วนลดจากยอด 1 ปี</th>
-                        <th>สัดส่วนงบสะสม</th>
-                        <th>จุดอ้างอิงเชิงเทคนิคและปริมาณการซื้อขาย (Confluence)</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr>
-                        <td><strong style="color:#4ade80">ไม้ที่ 1: โซนสะสมแรก (Mild Dip / Support Node)</strong></td>
-                        <td class="green"><strong>{cur}{info['tier1_price']:.2f}</strong></td>
-                        <td>{info['tier1_disc']:.1f}% จาก High</td>
-                        <td><strong>30% ของงบ</strong></td>
-                        <td>แนวรับ Volume สะสม ({cur}{info['vp_node_1']:.2f}) / Fibonacci 38.2% ({cur}{info['fib_382']:.2f}) / EMA 50</td>
-                    </tr>
-                    <tr>
-                        <td><strong style="color:#22c55e">ไม้ที่ 2: โซนคุณค่าหลัก (Major Value Zone)</strong></td>
-                        <td class="green"><strong>{cur}{info['tier2_price']:.2f}</strong></td>
-                        <td>{info['tier2_disc']:.1f}% จาก High</td>
-                        <td><strong>40% ของงบ (ไม้หลัก)</strong></td>
-                        <td>เส้นต้นทุนระยะยาว EMA 200 ({cur}{info['ema200']:.2f}) / Fibonacci 50% ({cur}{info['fib_500']:.2f})</td>
-                    </tr>
-                    <tr>
-                        <td><strong style="color:#facc15">ไม้ที่ 3: โซนลดราคาพิเศษ (Deep Panic Bargain)</strong></td>
-                        <td style="color:#facc15"><strong>{cur}{info['tier3_price']:.2f}</strong></td>
-                        <td>{info['tier3_disc']:.1f}% จาก High</td>
-                        <td><strong>30% สุดท้าย</strong></td>
-                        <td>แนวรับใหญ่ Fibonacci 61.8% ({cur}{info['fib_618']:.2f}) / โซนใกล้จุดต่ำสุดรอบ 1 ปี ({cur}{info['low_52w']:.2f})</td>
-                    </tr>
-                </tbody>
-            </table>
+            <div class="collapsible-section" style="overflow-x:auto;">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>บันไดตั้งรับ 3 ไม้ (Buy the Dip Ladder)</th>
+                            <th>ราคาตั้งรับ</th>
+                            <th>ส่วนลดจาก High</th>
+                            <th>สัดส่วนงบ</th>
+                            <th>จุดอ้างอิงเชิงเทคนิค</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong class="t1">ไม้ที่ 1: โซนสะสมแรก</strong></td>
+                            <td class="green"><strong>{cur}{info['tier1_price']:.2f}</strong></td>
+                            <td>{info['tier1_disc']:.1f}%</td>
+                            <td><strong>30%</strong></td>
+                            <td>Volume Node ({cur}{info['vp_node_1']:.2f}) / Fib 38.2% ({cur}{info['fib_382']:.2f})</td>
+                        </tr>
+                        <tr>
+                            <td><strong class="t2">ไม้ที่ 2: โซนคุณค่าหลัก</strong></td>
+                            <td class="green"><strong>{cur}{info['tier2_price']:.2f}</strong></td>
+                            <td>{info['tier2_disc']:.1f}%</td>
+                            <td><strong>40% (ไม้หลัก)</strong></td>
+                            <td>EMA 200 ({cur}{info['ema200']:.2f}) / Fib 50% ({cur}{info['fib_500']:.2f})</td>
+                        </tr>
+                        <tr>
+                            <td><strong class="t3">ไม้ที่ 3: โซนลดราคาพิเศษ</strong></td>
+                            <td class="amber"><strong>{cur}{info['tier3_price']:.2f}</strong></td>
+                            <td>{info['tier3_disc']:.1f}%</td>
+                            <td><strong>30% สุดท้าย</strong></td>
+                            <td>Fib 61.8% ({cur}{info['fib_618']:.2f}) / ใกล้ Low 1 ปี ({cur}{info['low_52w']:.2f})</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
             {analysts_section}
-        </div>
+        </article>
         """)
 
     nav_pills = "".join(
-        f'<button class="stock-pick-btn" data-pick="{_esc(r["ticker"])}" onclick="openStockDeepDive(\'{_esc(r["ticker"])}\')">{_esc(r["ticker"])} <small>({r["dip_score"]})</small></button>'
+        f'<button class="stock-pick-btn" data-pick="{_esc(r["ticker"])}" onclick="openStockDeepDive(\'{_esc(r["ticker"])}\')">{_esc(r["ticker"])} <small>{r["dip_score"]}</small></button>'
         for r in results_sorted
     )
     top3_cards_html = ""
@@ -335,29 +352,30 @@ def generate_html_report(
         up_s = f"{r['wall_st_upside']:+.1f}%" if r["wall_st_upside"] is not None else "N/A"
         top3_cards_html += f"""
         <div class="top3-card" onclick="openStockDeepDive('{rtkr}')">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-            <div>
-              <span class="rank-badge">#{rank} น่าช้อนสูงสุด</span>
-              <strong style="font-size:22px;color:#fff;margin-left:6px;">{rtkr}</strong>
-              <span style="color:#facc15;font-weight:700;font-size:18px;margin-left:6px;">{rcur}{r['close']:.2f}</span>
+          <div class="top3-head">
+            <div style="display:flex;align-items:center;gap:8px;">
+              <span class="rank-badge">#{rank}</span>
+              <strong style="font-size:20px;color:#fff;">{rtkr}</strong>
+              <span class="top3-price">{rcur}{r['close']:.2f}</span>
             </div>
-            <span style="color:#4ade80;font-weight:700;font-size:16px;">Score {r['dip_score']}/100</span>
+            <span class="score-pill score-high">{r['dip_score']}/100</span>
           </div>
-          <div style="font-size:13px;color:#38bdf8;margin-bottom:8px;">
-            ลดจาก High {r['drawdown_pct']:.1f}% &middot; Fwd P/E {fpe_s} &middot; PEG {peg_s} &middot; Upside {up_s}
+          <div class="top3-meta">
+            <span>{r['drawdown_pct']:.1f}% จาก High</span> &middot;
+            <span>Fwd P/E {fpe_s}</span> &middot;
+            <span>PEG {peg_s}</span> &middot;
+            <span class="green">Upside {up_s}</span>
           </div>
-          <div style="font-size:13.5px;color:#cbd5e1;margin-bottom:10px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">
-            {cio_h}
-          </div>
-          <div style="display:flex;justify-content:space-between;align-items:center;border-top:1px solid #1e293b;padding-top:8px;font-size:12.5px;">
-            <span>ไม้ 1: <strong class="green">{rcur}{r['tier1_price']:.2f}</strong> | ไม้ 2: <strong class="green">{rcur}{r['tier2_price']:.2f}</strong></span>
-            <span style="color:#38bdf8;font-weight:700;">ดูกราฟ & แผนช้อน →</span>
+          <div class="top3-verdict">{cio_h}</div>
+          <div class="top3-foot">
+            <span>ไม้ 1: <strong class="t1">{rcur}{r['tier1_price']:.2f}</strong> &middot; ไม้ 2: <strong class="t2">{rcur}{r['tier2_price']:.2f}</strong></span>
+            <span class="link-arrow">ดูแผน →</span>
           </div>
         </div>
         """
 
     charts_json = json.dumps(chart_configs).replace("</", "<\\/")
-    updated_at_str = datetime.now(THAI_TZ).strftime("%Y-%m-%d %H:%M:%S (เวลาไทย)")
+    updated_at_str = datetime.now(THAI_TZ).strftime("%d/%m/%Y %H:%M น.")
     fx_display = f"{fx_usd_thb:.2f}"
 
     macro_bar_html = ""
@@ -371,136 +389,420 @@ def generate_html_report(
         y10_val = f"{macro['us10y']:.2f}%" if macro.get("us10y") is not None else "N/A"
         sp_val = f"{macro['sp500']:,.0f}" if macro.get("sp500") is not None else "N/A"
         sp_dist = (
-            f"{macro['sp500_dist_ema200_pct']:+.1f}% vs EMA200"
+            f" ({macro['sp500_dist_ema200_pct']:+.1f}%)"
             if macro.get("sp500_dist_ema200_pct") is not None
             else ""
         )
         macro_bar_html = f"""
-    <!-- Global Macro & Fear/Greed Radar -->
-    <div style="background:linear-gradient(135deg,#0f172a 0%,#131b2e 100%);border:1px solid {r_color};border-left:5px solid {r_color};border-radius:12px;padding:14px 18px;margin-bottom:18px;display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:14px;">
-      <div style="flex:1;min-width:260px;">
-        <div style="font-size:12px;color:#94a3b8;font-weight:700;letter-spacing:0.4px;">🌡️ MACRO &amp; FEAR/GREED RADAR (อุณหภูมิตลาดโลก)</div>
-        <div style="font-size:17px;font-weight:700;color:{r_color};margin:2px 0;">{r_label}</div>
-        <div style="font-size:13px;color:#cbd5e1;">{r_advice}</div>
+    <div class="macro-strip" style="border-left-color:{r_color};">
+      <div class="macro-main">
+        <span class="macro-regime" style="color:{r_color};">{r_label}</span>
+        <span class="macro-advice">{r_advice}</span>
       </div>
-      <div style="display:flex;flex-wrap:wrap;gap:10px;">
-        <div class="sum-box" style="padding:8px 14px;min-width:115px;">
-          <span class="s-label">VIX (ความกลัว)</span>
-          <span class="s-val" style="font-size:16px;color:{vix_color};">{vix_val}<small style="font-size:11px;color:#94a3b8;">{vix_chg}</small></span>
-        </div>
-        <div class="sum-box" style="padding:8px 14px;min-width:110px;">
-          <span class="s-label">US 10Y Yield</span>
-          <span class="s-val" style="font-size:16px;color:#facc15;">{y10_val}</span>
-        </div>
-        <div class="sum-box" style="padding:8px 14px;min-width:155px;">
-          <span class="s-label">S&amp;P 500</span>
-          <span class="s-val cyan" style="font-size:16px;">{sp_val} <small style="font-size:11px;color:#94a3b8;">{sp_dist}</small></span>
-        </div>
-        <div class="sum-box" style="padding:8px 14px;min-width:105px;">
-          <span class="s-label">USD / THB</span>
-          <span class="s-val green" style="font-size:16px;">฿{fx_display}</span>
-        </div>
+      <div class="macro-pills">
+        <span class="m-pill"><small>VIX</small> <strong style="color:{vix_color};">{vix_val}{vix_chg}</strong></span>
+        <span class="m-pill"><small>US10Y</small> <strong class="amber">{y10_val}</strong></span>
+        <span class="m-pill"><small>S&amp;P500</small> <strong class="cyan">{sp_val}{sp_dist}</strong></span>
+        <span class="m-pill"><small>USD/THB</small> <strong class="green">฿{fx_display}</strong></span>
       </div>
     </div>
         """
+
+    hit_count = sum(1 for r in results_sorted if r["hit_status"] in ("hit_t1", "hit_t2"))
+    high_score_count = sum(1 for r in results_sorted if r["dip_score"] >= 80)
 
     html = f"""<!DOCTYPE html>
 <html lang="th">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AI Chief Investment Officer — ระบบวางแผนออมหุ้น Smart DCA & Buy the Dip (v4.0)</title>
+<title>Smart DCA &amp; AI CIO — ระบบวางแผนออมหุ้นอัจฉริยะ</title>
 <script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700&display=swap');
+  :root {{
+    --bg: #090d16;
+    --surface: #111827;
+    --surface-2: #172033;
+    --border: rgba(148, 163, 184, 0.16);
+    --border-strong: rgba(148, 163, 184, 0.28);
+    --text: #f1f5f9;
+    --muted: #94a3b8;
+    --green: #4ade80;
+    --green-deep: #22c55e;
+    --cyan: #38bdf8;
+    --amber: #facc15;
+    --red: #f87171;
+  }}
   *, *::before, *::after {{ box-sizing: border-box; }}
   body {{
     font-family: 'Sarabun', 'Segoe UI', Tahoma, sans-serif;
-    background: #0b0f19;
-    color: #f1f5f9;
+    background: var(--bg);
+    color: var(--text);
     margin: 0;
-    padding: 24px;
-    line-height: 1.65;
+    padding: 0 20px 40px 20px;
+    line-height: 1.6;
     overflow-x: hidden;
   }}
-  .container {{ max-width: 1240px; margin: 0 auto; }}
-  h1 {{ margin-top: 0; color: #4ade80; font-size: 26px; }}
-  .subtitle {{ color: #94a3b8; margin-bottom: 16px; }}
-  .nav-bar {{ display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; position: sticky; top: 8px; z-index: 50; background: rgba(15,23,42,0.94); padding: 10px 14px; border-radius: 10px; border: 1px solid #334155; backdrop-filter: blur(8px); align-items: center; }}
-  .nav-pill {{ color: #e2e8f0; text-decoration: none; background: #1e293b; padding: 5px 12px; border-radius: 6px; font-weight: 700; font-size: 13.5px; border: 1px solid #334155; transition: 0.15s; }}
-  .nav-pill:hover {{ background: #22c55e; color: #0f172a; border-color: #22c55e; }}
-  @keyframes pulseGlow {{
-    0%, 100% {{ box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.45); }}
-    50% {{ box-shadow: 0 0 12px 3px rgba(34, 197, 94, 0.35); }}
+  .container {{ max-width: 1220px; margin: 0 auto; }}
+  .green {{ color: var(--green); }}
+  .cyan {{ color: var(--cyan); }}
+  .amber {{ color: var(--amber); }}
+  .red {{ color: var(--red); }}
+  .muted {{ color: var(--muted); }}
+  .t1 {{ color: #4ade80; }}
+  .t2 {{ color: #22c55e; font-weight: 700; }}
+  .t3 {{ color: #facc15; }}
+
+  /* Sticky Top Navbar */
+  .top-navbar {{
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: rgba(9, 13, 22, 0.92);
+    border-bottom: 1px solid var(--border);
+    backdrop-filter: blur(14px);
+    margin: 0 -20px 20px -20px;
+    padding: 10px 20px;
   }}
-  .hit-badge-hot {{
-    background: rgba(34, 197, 94, 0.22);
-    color: #4ade80;
-    border: 1px solid #22c55e;
-    padding: 4px 10px;
-    border-radius: 999px;
-    font-size: 12.5px;
-    font-weight: 700;
-    animation: pulseGlow 2.2s infinite;
-    white-space: nowrap;
+  .navbar-inner {{
+    max-width: 1220px;
+    margin: 0 auto;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
   }}
-  .hit-badge-wait {{
-    background: rgba(148, 163, 184, 0.12);
-    color: #94a3b8;
-    border: 1px solid #334155;
-    padding: 4px 10px;
-    border-radius: 999px;
-    font-size: 12px;
+  .brand-box {{ display: flex; align-items: center; gap: 10px; }}
+  .brand-title {{ font-size: 18px; font-weight: 700; color: #fff; letter-spacing: -0.2px; }}
+  .brand-sub {{ font-size: 11.5px; color: var(--muted); }}
+  .nav-tabs {{
+    display: flex;
+    gap: 4px;
+    background: var(--surface);
+    padding: 4px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+  }}
+  .nav-tab-btn {{
+    background: transparent;
+    color: var(--muted);
+    border: none;
+    padding: 7px 14px;
+    border-radius: 7px;
+    font-family: inherit;
+    font-size: 14px;
     font-weight: 600;
+    cursor: pointer;
+    transition: 0.16s;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
     white-space: nowrap;
   }}
-  .range-wrap {{ width: 130px; }}
-  .range-labels {{ display: flex; justify-content: space-between; font-size: 10.5px; color: #94a3b8; margin-bottom: 3px; }}
-  .range-track {{ position: relative; height: 6px; background: #1e293b; border-radius: 999px; }}
-  .range-fill {{ height: 100%; background: linear-gradient(90deg, #22c55e 0%, #38bdf8 60%, #f59e0b 100%); border-radius: 999px; }}
-  .range-dot {{ position: absolute; top: -3px; width: 12px; height: 12px; background: #fff; border: 2px solid #0b0f19; border-radius: 50%; transform: translateX(-50%); }}
-  .filter-bar {{
+  .nav-tab-btn:hover {{ color: #fff; background: rgba(255,255,255,0.05); }}
+  .nav-tab-btn.active {{
+    background: var(--green-deep);
+    color: #052e16;
+    font-weight: 700;
+  }}
+  .nav-right {{ display: flex; align-items: center; gap: 8px; }}
+  .updated-pill {{ font-size: 12px; color: var(--muted); }}
+  .btn-primary {{
+    background: var(--green-deep);
+    color: #052e16;
+    border: none;
+    border-radius: 8px;
+    padding: 8px 14px;
+    font-weight: 700;
+    font-size: 13.5px;
+    cursor: pointer;
+    font-family: inherit;
+    transition: 0.15s;
+  }}
+  .btn-primary:hover {{ background: var(--green); }}
+  .btn-primary:disabled {{ opacity: 0.55; cursor: wait; }}
+  .btn-ghost {{
+    background: var(--surface-2);
+    color: var(--text);
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    padding: 7px 12px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: inherit;
+    transition: 0.15s;
+  }}
+  .btn-ghost:hover {{ border-color: var(--cyan); color: var(--cyan); }}
+  .btn-remove {{
+    background: rgba(239,68,68,0.12);
+    color: #f87171;
+    border: 1px solid rgba(239,68,68,0.3);
+    border-radius: 7px;
+    padding: 5px 10px;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    font-family: inherit;
+  }}
+  .btn-remove:hover {{ background: #ef4444; color: #fff; }}
+
+  /* Compact Macro Strip */
+  .macro-strip {{
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 4px solid var(--cyan);
+    border-radius: 12px;
+    padding: 12px 16px;
+    margin-bottom: 18px;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+  }}
+  .macro-main {{ display: flex; flex-direction: column; gap: 2px; }}
+  .macro-regime {{ font-size: 15px; font-weight: 700; }}
+  .macro-advice {{ font-size: 13px; color: var(--muted); }}
+  .macro-pills {{ display: flex; flex-wrap: wrap; gap: 8px; }}
+  .m-pill {{
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 5px 11px;
+    font-size: 13px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }}
+  .m-pill small {{ color: var(--muted); font-size: 11px; font-weight: 600; }}
+
+  /* Collapsible Add-Stock Drawer */
+  .add-drawer {{
+    display: none;
+    background: var(--surface);
+    border: 1px solid rgba(56,189,248,0.4);
+    border-radius: 12px;
+    padding: 14px 16px;
+    margin-bottom: 18px;
+    animation: fadeIn 0.16s ease-out;
+  }}
+  .add-drawer.open {{ display: block; }}
+  .add-row {{ display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; }}
+  .add-form {{ display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }}
+  .add-input {{
+    background: var(--bg);
+    color: #fff;
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-size: 14px;
+    font-weight: 600;
+    width: 240px;
+    text-transform: uppercase;
+    font-family: inherit;
+    outline: none;
+  }}
+  .add-input:focus {{ border-color: var(--cyan); }}
+  .quick-chip {{
+    background: var(--surface-2);
+    color: var(--cyan);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 4px 10px;
+    font-size: 12.5px;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: inherit;
+  }}
+  .quick-chip:hover {{ background: var(--cyan); color: #090d16; }}
+
+  /* Section Header */
+  .section-head {{
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 12px;
+  }}
+  .section-title {{ font-size: 16.5px; font-weight: 700; color: #fff; }}
+  .section-sub {{ font-size: 13px; color: var(--muted); }}
+
+  /* Top 3 Cards */
+  .top3-grid {{
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+    gap: 14px;
+    margin-bottom: 22px;
+  }}
+  .top3-card {{
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px;
+    cursor: pointer;
+    transition: 0.16s;
+  }}
+  .top3-card:hover {{
+    transform: translateY(-2px);
+    border-color: rgba(74, 222, 128, 0.55);
+    background: var(--surface-2);
+  }}
+  .top3-head {{ display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }}
+  .rank-badge {{
+    background: rgba(34,197,94,0.16);
+    color: var(--green);
+    border-radius: 6px;
+    padding: 2px 7px;
+    font-size: 12px;
+    font-weight: 700;
+  }}
+  .top3-price {{ color: var(--amber); font-weight: 700; font-size: 16px; }}
+  .top3-meta {{ font-size: 12.5px; color: var(--muted); margin-bottom: 8px; }}
+  .top3-verdict {{
+    font-size: 13.5px;
+    color: #e2e8f0;
+    margin-bottom: 10px;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }}
+  .top3-foot {{
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-top: 1px solid var(--border);
+    padding-top: 8px;
+    font-size: 12.5px;
+    color: var(--muted);
+  }}
+  .link-arrow {{ color: var(--cyan); font-weight: 700; }}
+
+  /* Screener Card & Toolbar */
+  .panel-card {{
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 18px 20px;
+    margin-bottom: 24px;
+  }}
+  .screener-toolbar {{
     display: flex;
     flex-wrap: wrap;
     justify-content: space-between;
     align-items: center;
     gap: 10px;
-    background: #131b2e;
-    border: 1px solid #26334d;
-    padding: 12px 16px;
-    border-radius: 12px;
-    margin-bottom: 22px;
+    margin-bottom: 14px;
   }}
-  .filter-tabs {{ display: flex; flex-wrap: wrap; gap: 8px; }}
-  .filter-btn {{
-    background: #0b0f19;
-    color: #cbd5e1;
-    border: 1px solid #334155;
-    padding: 7px 14px;
+  .search-input {{
+    background: var(--bg);
+    color: #fff;
+    border: 1px solid var(--border-strong);
     border-radius: 8px;
-    font-family: inherit;
+    padding: 7px 12px;
     font-size: 13.5px;
-    font-weight: 700;
-    cursor: pointer;
-    transition: 0.15s;
+    width: 220px;
+    font-family: inherit;
+    outline: none;
   }}
-  .filter-btn.active, .filter-btn:hover {{ background: #22c55e; color: #0b0f19; border-color: #22c55e; }}
-  .screener-card {{
-    background: #131b2e;
-    border: 1px solid #334155;
+  .search-input:focus {{ border-color: var(--cyan); }}
+  .filter-pills {{ display: flex; flex-wrap: wrap; gap: 6px; }}
+  .f-pill {{
+    background: var(--bg);
+    color: var(--muted);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 6px 11px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: inherit;
+    transition: 0.14s;
+  }}
+  .f-pill:hover {{ color: #fff; border-color: var(--border-strong); }}
+  .f-pill.active {{ background: rgba(34,197,94,0.18); color: var(--green); border-color: rgba(34,197,94,0.5); }}
+
+  /* Tables */
+  table {{ width: 100%; border-collapse: collapse; background: var(--bg); border-radius: 10px; overflow: hidden; }}
+  th, td {{ padding: 11px 12px; text-align: left; border-bottom: 1px solid var(--border); font-size: 13.5px; }}
+  th {{ background: var(--surface-2); color: var(--muted); font-size: 12.5px; font-weight: 700; white-space: nowrap; }}
+  #screenerTable th {{ cursor: pointer; user-select: none; }}
+  #screenerTable th:hover {{ color: #fff; }}
+  .screener-row {{ cursor: pointer; transition: background 0.12s; }}
+  .screener-row:hover {{ background: rgba(56,189,248,0.07); }}
+  .cell-ticker {{ font-size: 15px; font-weight: 700; color: var(--cyan); display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }}
+  .cell-sub {{ font-size: 11.5px; color: var(--muted); }}
+  .cell-price {{ font-weight: 700; color: var(--amber); font-size: 14.5px; }}
+  .cell-dd {{ font-size: 11.5px; color: var(--muted); }}
+  .tiers-cell {{ white-space: nowrap; font-size: 13px; }}
+
+  /* Badges & Pills */
+  .badge-hit {{
+    background: rgba(34,197,94,0.16);
+    color: var(--green);
+    border: 1px solid rgba(34,197,94,0.4);
+    padding: 3px 9px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 700;
+    white-space: nowrap;
+  }}
+  .badge-wait {{
+    background: rgba(148,163,184,0.1);
+    color: var(--muted);
+    padding: 3px 9px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+  }}
+  .badge-warn {{
+    background: rgba(245,158,11,0.16);
+    color: #fbbf24;
+    border: 1px solid rgba(245,158,11,0.4);
+    padding: 2px 7px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+    white-space: nowrap;
+  }}
+  .score-pill {{
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-weight: 700;
+    font-size: 13.5px;
+    min-width: 44px;
+    text-align: center;
+  }}
+  .score-pill-lg {{
+    padding: 5px 12px;
+    border-radius: 999px;
+    font-weight: 700;
+    font-size: 13px;
+  }}
+  .score-high {{ background: rgba(34,197,94,0.18); color: #4ade80; border: 1px solid rgba(34,197,94,0.45); }}
+  .score-mid {{ background: rgba(56,189,248,0.16); color: #38bdf8; border: 1px solid rgba(56,189,248,0.4); }}
+  .score-low {{ background: rgba(245,158,11,0.16); color: #facc15; border: 1px solid rgba(245,158,11,0.4); }}
+
+  /* 52W Range Bar */
+  .range-wrap {{ width: 115px; }}
+  .range-labels {{ display: flex; justify-content: space-between; font-size: 10.5px; color: var(--muted); margin-bottom: 3px; }}
+  .range-track {{ position: relative; height: 5px; background: #1e293b; border-radius: 999px; }}
+  .range-fill {{ height: 100%; background: linear-gradient(90deg, #22c55e 0%, #38bdf8 60%, #f59e0b 100%); border-radius: 999px; }}
+  .range-dot {{ position: absolute; top: -3px; width: 11px; height: 11px; background: #fff; border: 2px solid var(--bg); border-radius: 50%; transform: translateX(-50%); }}
+
+  /* Deep Dive Stock Card */
+  .card {{
+    background: var(--surface);
+    border: 1px solid var(--border);
     border-radius: 14px;
     padding: 20px 22px;
-    margin-bottom: 26px;
-  }}
-  .screener-card th {{ cursor: pointer; user-select: none; }}
-  .screener-card th:hover {{ color: #38bdf8; }}
-  .card {{
-    background: #131b2e;
-    border: 1px solid #26334d;
-    border-radius: 14px;
-    padding: 24px;
-    margin-bottom: 30px;
-    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    margin-bottom: 22px;
   }}
   .card-header {{
     display: flex;
@@ -508,112 +810,170 @@ def generate_html_report(
     align-items: center;
     flex-wrap: wrap;
     gap: 12px;
-    border-bottom: 1px solid #26334d;
-    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 14px;
     margin-bottom: 16px;
   }}
-  .ticker {{ font-size: 28px; font-weight: 700; color: #fff; }}
-  .comp-name {{ font-size: 15px; color: #94a3b8; }}
-  .price {{ font-size: 24px; font-weight: 700; color: #facc15; }}
-  .discount {{ font-size: 13.5px; color: #38bdf8; background: rgba(56,189,248,0.12); padding: 4px 10px; border-radius: 6px; font-weight: 600; }}
-  .dip-score {{ padding: 6px 14px; border-radius: 999px; font-weight: 700; font-size: 14px; border: 1px solid #22c55e; background: rgba(15,23,42,0.8); }}
+  .card-title-group {{ display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }}
+  .card-actions {{ display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }}
+  .ticker {{ font-size: 26px; font-weight: 700; color: #fff; }}
+  .comp-name {{ font-size: 14px; color: var(--muted); }}
+  .price {{ font-size: 22px; font-weight: 700; color: var(--amber); }}
+  .discount {{ font-size: 13px; color: var(--cyan); background: rgba(56,189,248,0.12); padding: 3px 9px; border-radius: 6px; font-weight: 600; }}
+
+  /* AI CIO Box */
   .cio-box {{
-    background: linear-gradient(135deg, #0f172a 0%, #172554 100%);
-    border: 1px solid #1e3a8a;
-    border-radius: 10px;
-    padding: 18px 20px;
-    margin-bottom: 18px;
+    background: linear-gradient(145deg, rgba(15,23,42,0.9) 0%, rgba(23,37,84,0.45) 100%);
+    border: 1px solid rgba(56,189,248,0.25);
+    border-radius: 12px;
+    padding: 16px 18px;
+    margin-bottom: 16px;
   }}
-  .cio-title {{ font-size: 14px; font-weight: 700; color: #38bdf8; letter-spacing: 0.4px; margin-bottom: 6px; }}
-  .cio-headline {{ font-size: 19px; font-weight: 700; color: #4ade80; margin-bottom: 14px; }}
-  .cio-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap: 14px; }}
-  .cio-item {{ background: rgba(11,15,25,0.65); padding: 12px 16px; border-radius: 8px; border: 1px solid rgba(51,65,85,0.7); }}
-  .cio-item strong {{ display: block; color: #f8fafc; font-size: 14px; margin-bottom: 4px; }}
-  .cio-item p {{ margin: 0; color: #cbd5e1; font-size: 14.5px; }}
-  .chart-wrapper {{ background: #0b0f19; border: 1px solid #1e293b; border-radius: 10px; padding: 12px; margin-bottom: 16px; }}
-  .chart-legend {{ display: flex; flex-wrap: wrap; gap: 14px; font-size: 13px; color: #cbd5e1; margin-bottom: 8px; }}
+  .cio-header-row {{ display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 6px; }}
+  .cio-title {{ font-size: 13px; font-weight: 700; color: var(--cyan); letter-spacing: 0.3px; }}
+  .cio-meta-pill {{ font-size: 11.5px; color: var(--muted); }}
+  .cio-meta-pill.fresh {{ color: var(--green); font-weight: 600; }}
+  .cio-headline {{ font-size: 17.5px; font-weight: 700; color: #fff; margin-bottom: 14px; line-height: 1.5; }}
+  .cio-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap: 12px; }}
+  .cio-item {{ background: rgba(9,13,22,0.65); padding: 12px 14px; border-radius: 9px; border: 1px solid var(--border); }}
+  .cio-item strong {{ display: block; color: #e2e8f0; font-size: 13.5px; margin-bottom: 4px; }}
+  .cio-item p {{ margin: 0; color: #cbd5e1; font-size: 14px; }}
+
+  /* Metrics & Sub-panels */
+  .metrics-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px; margin-bottom: 16px; }}
+  .metric {{ background: var(--bg); padding: 10px 13px; border-radius: 9px; border: 1px solid var(--border); }}
+  .metric .label {{ display: block; font-size: 11.5px; color: var(--muted); }}
+  .metric .val {{ font-size: 15px; font-weight: 700; }}
+  .two-col {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); gap: 14px; margin-bottom: 16px; }}
+  .sub-panel {{ background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 12px; overflow-x: auto; }}
+  .sub-panel-title {{ font-size: 13px; font-weight: 700; color: var(--cyan); margin-bottom: 8px; }}
+
+  /* Charts */
+  .chart-wrapper {{ background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 12px; margin-bottom: 16px; }}
+  .chart-legend {{ display: flex; flex-wrap: wrap; gap: 12px; font-size: 12.5px; color: var(--muted); margin-bottom: 8px; }}
   .chart-legend span {{ display: inline-flex; align-items: center; gap: 6px; }}
-  .chart-legend i {{ display: inline-block; width: 12px; height: 3px; border-radius: 2px; }}
-  .tv-chart {{ width: 100%; height: 400px; }}
-  .metrics-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-bottom: 16px; }}
-  .metric {{ background: #0b0f19; padding: 10px 14px; border-radius: 8px; border: 1px solid #1e293b; }}
-  .metric .label {{ display: block; font-size: 12px; color: #94a3b8; }}
-  .metric .val {{ font-size: 16px; font-weight: 700; }}
-  .green {{ color: #4ade80; }}
-  .cyan {{ color: #38bdf8; }}
-  .red {{ color: #f87171; }}
-  table {{ width: 100%; border-collapse: collapse; background: #0b0f19; border-radius: 8px; overflow: hidden; }}
-  th, td {{ padding: 11px 13px; text-align: left; border-bottom: 1px solid #1e293b; font-size: 14px; }}
-  th {{ background: #1e293b; color: #e2e8f0; font-size: 13.5px; }}
-  .analysts-box {{ margin-top: 14px; background: #0b0f19; padding: 10px 14px; border-radius: 8px; }}
-  .analysts-box summary {{ cursor: pointer; font-weight: 600; color: #38bdf8; }}
-  .analyst-item {{ padding: 10px 0; border-bottom: 1px solid #1e293b; }}
-  .analyst-head {{ font-size: 14px; margin-bottom: 4px; }}
-  .analyst-body {{ font-size: 14px; color: #cbd5e1; }}
-  .calc-card {{
-    background: linear-gradient(145deg, #0f172a 0%, #1e293b 100%);
-    border: 2px solid #22c55e;
-    border-radius: 14px;
-    padding: 22px 24px;
-    margin-bottom: 24px;
-    box-shadow: 0 10px 30px rgba(34, 197, 94, 0.15);
+  .chart-legend i {{ display: inline-block; width: 11px; height: 3px; border-radius: 2px; }}
+  .tv-chart {{ width: 100%; height: 380px; }}
+
+  /* Deep Dive Stock Picker Bar */
+  .picker-bar {{
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    padding: 10px 14px;
+    border-radius: 12px;
+    margin-bottom: 16px;
   }}
-  .calc-title {{ font-size: 21px; font-weight: 700; color: #4ade80; margin-bottom: 6px; }}
-  .calc-sub {{ font-size: 14px; color: #94a3b8; margin-bottom: 18px; }}
-  .calc-controls {{ display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-end; background: #0b0f19; padding: 16px; border-radius: 10px; border: 1px solid #334155; margin-bottom: 16px; }}
-  .ctrl-group {{ display: flex; flex-direction: column; gap: 6px; }}
-  .ctrl-group label {{ font-size: 13px; color: #cbd5e1; font-weight: 600; }}
-  .ctrl-group input, .ctrl-group select {{ background: #1e293b; color: #fff; border: 1px solid #475569; border-radius: 8px; padding: 9px 14px; font-size: 16px; font-weight: 700; font-family: inherit; outline: none; }}
-  .ctrl-group input:focus, .ctrl-group select:focus {{ border-color: #4ade80; }}
-  .ticker-toggles {{ display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; align-items: center; }}
-  .ticker-toggle {{ display: inline-flex; align-items: center; gap: 6px; background: #0b0f19; border: 1px solid #334155; padding: 6px 12px; border-radius: 8px; cursor: pointer; user-select: none; font-size: 14px; font-weight: 700; }}
-  .ticker-toggle input {{ accent-color: #22c55e; width: 16px; height: 16px; cursor: pointer; }}
-  .calc-summary-bar {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 16px; }}
-  .sum-box {{ background: #0b0f19; padding: 12px 16px; border-radius: 8px; border: 1px solid #1e293b; }}
-  .sum-box .s-label {{ font-size: 12px; color: #94a3b8; display: block; }}
+  .stock-pick-btn {{
+    background: var(--bg);
+    color: var(--text);
+    border: 1px solid var(--border);
+    padding: 6px 11px;
+    border-radius: 7px;
+    font-family: inherit;
+    font-weight: 700;
+    font-size: 13px;
+    cursor: pointer;
+    transition: 0.14s;
+  }}
+  .stock-pick-btn small {{ color: var(--muted); font-weight: 600; margin-left: 2px; }}
+  .stock-pick-btn:hover, .stock-pick-btn.active {{ background: var(--cyan); color: #090d16; border-color: var(--cyan); }}
+  .stock-pick-btn.active small {{ color: #090d16; }}
+
+  /* Calculator & Backtest */
+  .calc-controls {{
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px;
+    align-items: flex-end;
+    background: var(--bg);
+    padding: 14px 16px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    margin-bottom: 14px;
+  }}
+  .ctrl-group {{ display: flex; flex-direction: column; gap: 5px; }}
+  .ctrl-group label {{ font-size: 12.5px; color: var(--muted); font-weight: 600; }}
+  .ctrl-group input, .ctrl-group select {{
+    background: var(--surface-2);
+    color: #fff;
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-size: 15px;
+    font-weight: 700;
+    font-family: inherit;
+    outline: none;
+  }}
+  .ctrl-group input:focus, .ctrl-group select:focus {{ border-color: var(--green); }}
+  .preset-row {{ display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 14px; }}
+  .ticker-toggles {{ display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 16px; align-items: center; }}
+  .ticker-toggle {{
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    padding: 5px 11px;
+    border-radius: 8px;
+    cursor: pointer;
+    user-select: none;
+    font-size: 13px;
+    font-weight: 600;
+  }}
+  .ticker-toggle input {{ accent-color: var(--green-deep); width: 15px; height: 15px; cursor: pointer; }}
+  .calc-summary-bar {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; margin-bottom: 16px; }}
+  .sum-box {{ background: var(--bg); padding: 12px 14px; border-radius: 9px; border: 1px solid var(--border); }}
+  .sum-box .s-label {{ font-size: 12px; color: var(--muted); display: block; }}
   .sum-box .s-val {{ font-size: 18px; font-weight: 700; }}
-  .add-bar {{ background: #131b2e; border: 1px solid #38bdf8; border-radius: 12px; padding: 14px 18px; margin-bottom: 18px; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; }}
-  .add-form {{ display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }}
-  .add-input {{ background: #0b0f19; color: #fff; border: 1px solid #475569; border-radius: 8px; padding: 8px 14px; font-size: 15px; font-weight: 700; width: 240px; text-transform: uppercase; }}
-  .btn-add {{ background: #22c55e; color: #0b0f19; border: none; border-radius: 8px; padding: 9px 16px; font-weight: 700; font-size: 14px; cursor: pointer; font-family: inherit; transition: 0.15s; }}
-  .btn-add:hover {{ background: #4ade80; }}
-  .btn-add:disabled {{ opacity: 0.6; cursor: wait; }}
-  .quick-chip {{ background: #1e293b; color: #38bdf8; border: 1px solid #334155; border-radius: 6px; padding: 4px 10px; font-size: 13px; font-weight: 700; cursor: pointer; font-family: inherit; }}
-  .quick-chip:hover {{ background: #38bdf8; color: #0b0f19; }}
-  .btn-remove {{ background: rgba(239,68,68,0.15); color: #f87171; border: 1px solid rgba(239,68,68,0.4); border-radius: 8px; padding: 5px 10px; font-size: 12px; font-weight: 700; cursor: pointer; }}
-  .btn-remove:hover {{ background: #ef4444; color: #fff; }}
+
+  .analysts-box {{ margin-top: 14px; background: var(--bg); padding: 10px 14px; border-radius: 8px; border: 1px solid var(--border); }}
+  .analysts-box summary {{ cursor: pointer; font-weight: 600; color: var(--cyan); font-size: 13.5px; }}
+  .analyst-item {{ padding: 9px 0; border-bottom: 1px solid var(--border); }}
+  .analyst-head {{ font-size: 13.5px; margin-bottom: 3px; }}
+  .analyst-body {{ font-size: 13.5px; color: #cbd5e1; }}
+
   body.compact-mode .collapsible-section {{ display: none; }}
-  .top-navbar {{ position: sticky; top: 0; z-index: 100; background: rgba(11, 15, 25, 0.95); border-bottom: 1px solid #26334d; backdrop-filter: blur(12px); margin: -24px -24px 24px -24px; padding: 12px 24px; }}
-  .navbar-inner {{ max-width: 1240px; margin: 0 auto; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px; }}
-  .brand-box {{ display: flex; align-items: center; gap: 10px; }}
-  .brand-title {{ font-size: 20px; font-weight: 700; color: #4ade80; margin: 0; }}
-  .nav-tabs {{ display: flex; gap: 6px; flex-wrap: wrap; background: #131b2e; padding: 5px; border-radius: 12px; border: 1px solid #26334d; }}
-  .nav-tab-btn {{ background: transparent; color: #cbd5e1; border: none; padding: 8px 14px; border-radius: 8px; font-family: inherit; font-size: 14px; font-weight: 700; cursor: pointer; transition: 0.18s; display: inline-flex; align-items: center; gap: 6px; }}
-  .nav-tab-btn:hover {{ color: #fff; background: rgba(56, 189, 248, 0.12); }}
-  .nav-tab-btn.active {{ background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%); color: #0b0f19; box-shadow: 0 4px 12px rgba(34, 197, 94, 0.3); }}
   .tab-pane {{ display: none; }}
-  .tab-pane.active {{ display: block; animation: fadeIn 0.2s ease-out; }}
+  .tab-pane.active {{ display: block; animation: fadeIn 0.18s ease-out; }}
   @keyframes fadeIn {{ from {{ opacity: 0; transform: translateY(4px); }} to {{ opacity: 1; transform: translateY(0); }} }}
-  .top3-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: 16px; margin-bottom: 24px; }}
-  .top3-card {{ background: linear-gradient(145deg, #131b2e 0%, #0f172a 100%); border: 1px solid #22c55e; border-radius: 12px; padding: 16px 18px; cursor: pointer; transition: 0.18s; box-shadow: 0 6px 18px rgba(0,0,0,0.3); }}
-  .top3-card:hover {{ transform: translateY(-3px); border-color: #4ade80; box-shadow: 0 10px 24px rgba(34,197,94,0.18); }}
-  .rank-badge {{ background: rgba(34,197,94,0.2); color: #4ade80; border: 1px solid #22c55e; padding: 2px 8px; border-radius: 6px; font-size: 12px; font-weight: 700; }}
-  .stock-pick-btn {{ background: #1e293b; color: #e2e8f0; border: 1px solid #334155; padding: 7px 14px; border-radius: 8px; font-family: inherit; font-weight: 700; font-size: 14px; cursor: pointer; transition: 0.15s; }}
-  .stock-pick-btn:hover, .stock-pick-btn.active {{ background: #38bdf8; color: #0b0f19; border-color: #38bdf8; }}
+
+  .toast-banner {{
+    position: fixed;
+    right: 20px;
+    bottom: 20px;
+    z-index: 999;
+    background: var(--surface-2);
+    color: #fff;
+    border: 1px solid rgba(56,189,248,0.5);
+    border-radius: 10px;
+    padding: 11px 16px;
+    font-size: 13.5px;
+    font-weight: 600;
+    box-shadow: 0 10px 28px rgba(0,0,0,0.45);
+    display: none;
+    align-items: center;
+    gap: 8px;
+  }}
+  .toast-banner.show {{ display: inline-flex; animation: fadeIn 0.16s ease-out; }}
+
   @media (max-width: 768px) {{
-    body {{ padding: 12px; }}
-    .top-navbar {{ margin: -12px -12px 16px -12px; padding: 10px 12px; }}
-    .navbar-inner {{ gap: 10px; }}
+    body {{ padding: 0 12px 32px 12px; }}
+    .top-navbar {{ margin: 0 -12px 14px -12px; padding: 10px 12px; }}
     .nav-tabs {{ width: 100%; justify-content: space-between; }}
-    .nav-tab-btn {{ padding: 7px 10px; font-size: 13px; flex: 1 1 auto; justify-content: center; }}
-    .card, .screener-card, .calc-card {{ padding: 14px; }}
-    .add-input {{ width: 100%; max-width: 100%; }}
+    .nav-tab-btn {{ padding: 7px 8px; font-size: 12.5px; flex: 1 1 auto; justify-content: center; }}
+    .nav-right {{ width: 100%; justify-content: space-between; }}
+    .panel-card, .card {{ padding: 14px; }}
+    .add-input, .search-input {{ width: 100%; }}
     .add-form {{ width: 100%; }}
     .ticker {{ font-size: 22px; }}
-    .price {{ font-size: 20px; }}
-    .cio-headline {{ font-size: 16.5px; }}
-    .tv-chart {{ height: 300px; }}
-    th, td {{ padding: 8px 9px; font-size: 13px; }}
+    .price {{ font-size: 19px; }}
+    .cio-headline {{ font-size: 16px; }}
+    .tv-chart {{ height: 290px; }}
+    th, td {{ padding: 8px 9px; font-size: 12.5px; }}
   }}
 </style>
 </head>
@@ -622,72 +982,78 @@ def generate_html_report(
 <header class="top-navbar">
   <div class="navbar-inner">
     <div class="brand-box">
-      <span style="font-size:24px;">🧠</span>
       <div>
-        <div class="brand-title">Smart DCA & AI CIO <small style="font-size:12px;color:#38bdf8;">v4.0</small></div>
-        <div style="font-size:11.5px;color:#94a3b8;">SQLite Cache &middot; Batch Engine &middot; Live FX ฿{fx_display}/USD</div>
+        <div class="brand-title">Smart DCA &amp; AI CIO</div>
+        <div class="brand-sub">อัปเดต {updated_at_str} &middot; ฿{fx_display}/USD</div>
       </div>
     </div>
 
     <nav class="nav-tabs">
-      <button class="nav-tab-btn active" id="tabBtn-overview" onclick="switchMainTab('overview')">
-        📊 1. ภาพรวม ({len(results_sorted)})
-      </button>
-      <button class="nav-tab-btn" id="tabBtn-calculator" onclick="switchMainTab('calculator')">
-        💰 2. คำนวณ DCA
-      </button>
-      <button class="nav-tab-btn" id="tabBtn-deepdive" onclick="switchMainTab('deepdive')">
-        📈 3. เจาะลึก & กราฟ
-      </button>
-      <button class="nav-tab-btn" id="tabBtn-backtest" onclick="switchMainTab('backtest')">
-        🧪 4. Backtest
-      </button>
+      <button class="nav-tab-btn active" id="tabBtn-overview" onclick="switchMainTab('overview')">📊 ภาพรวม ({len(results_sorted)})</button>
+      <button class="nav-tab-btn" id="tabBtn-calculator" onclick="switchMainTab('calculator')">💰 คำนวณ DCA</button>
+      <button class="nav-tab-btn" id="tabBtn-deepdive" onclick="switchMainTab('deepdive')">📈 เจาะลึก &amp; กราฟ</button>
+      <button class="nav-tab-btn" id="tabBtn-backtest" onclick="switchMainTab('backtest')">🧪 Backtest</button>
     </nav>
 
-    <div style="display:flex;align-items:center;gap:10px;">
-      <span style="font-size:12.5px;color:#94a3b8;">🕒 อัปเดต: <strong style="color:#4ade80;">{updated_at_str}</strong></span>
-      <button class="quick-chip" style="background:#0284c7;color:#fff;border-color:#38bdf8;padding:7px 12px;" onclick="refreshAllPrices()">🔄 ดึงราคาล่าสุด</button>
+    <div class="nav-right">
+      <button class="btn-ghost" onclick="toggleAddDrawer()">➕ เพิ่มหุ้น</button>
+      <button class="btn-primary" id="refreshBtn" onclick="refreshAllPrices()">🔄 ดึงราคาล่าสุด</button>
     </div>
   </div>
 </header>
 
 <div class="container">
 
-  <!-- ==================== TAB 1: OVERVIEW & SCREENER ==================== -->
-  <section id="tab-overview" class="tab-pane active">
-    {macro_bar_html}
-    <div class="add-bar">
+  <!-- Collapsible Add Stock Drawer (accessible from any tab) -->
+  <div class="add-drawer" id="addDrawer">
+    <div class="add-row">
       <div class="add-form">
-        <strong style="color:#38bdf8;font-size:15px;">➕ เพิ่มหุ้นเข้าพอร์ต:</strong>
-        <input type="text" id="newTickerInput" class="add-input" placeholder="เช่น AAPL, AMD, AVGO, PTT.BK" onkeydown="if(event.key==='Enter') addStockFromInput()">
-        <button id="addStockBtn" class="btn-add" onclick="addStockFromInput()">➕ เพิ่มและให้ AI วิเคราะห์</button>
-        <span id="addStatusMsg" style="font-size:13px;color:#facc15;font-weight:600;"></span>
+        <strong style="color:var(--cyan);font-size:14px;">เพิ่มหุ้นเข้าพอร์ต:</strong>
+        <input type="text" id="newTickerInput" class="add-input" placeholder="เช่น AAPL, AVGO, PTT.BK" onkeydown="if(event.key==='Enter') addStockFromInput()">
+        <button id="addStockBtn" class="btn-primary" onclick="addStockFromInput()">เพิ่ม &amp; วิเคราะห์</button>
+        <span id="addStatusMsg" style="font-size:13px;color:var(--amber);font-weight:600;"></span>
       </div>
       <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
-        <small style="color:#94a3b8;">เพิ่มด่วน:</small>
+        <small class="muted">เพิ่มด่วน:</small>
         <button class="quick-chip" onclick="quickAdd('AAPL')">+ AAPL</button>
         <button class="quick-chip" onclick="quickAdd('AMZN')">+ AMZN</button>
-        <button class="quick-chip" onclick="quickAdd('AMD')">+ AMD</button>
         <button class="quick-chip" onclick="quickAdd('AVGO')">+ AVGO</button>
         <button class="quick-chip" onclick="quickAdd('COST')">+ COST</button>
         <button class="quick-chip" onclick="quickAdd('BRK-B')">+ BRK-B</button>
         <button class="quick-chip" onclick="quickAdd('PTT.BK')">+ PTT.BK</button>
       </div>
     </div>
+  </div>
 
-    <div style="margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;">
-      <strong style="font-size:18px;color:#4ade80;">🏆 Top 3 หุ้นลดราคาน่าช้อนสะสมที่สุดประจำวันนี้ (คลิกเพื่อดูกราฟและแผนช้อนซื้อ)</strong>
-      <button class="quick-chip" onclick="switchMainTab('calculator')" style="padding:6px 14px;">ไปหน้าคำนวณแบ่งเงินออม 💰 →</button>
+  <!-- ==================== TAB 1: OVERVIEW & SCREENER ==================== -->
+  <section id="tab-overview" class="tab-pane active">
+    {macro_bar_html}
+
+    <div class="section-head">
+      <div>
+        <div class="section-title">🏆 Top 3 หุ้นน่าช้อนสะสมที่สุดวันนี้</div>
+        <div class="section-sub">แตะโซนซื้อแล้ว {hit_count} ตัว &middot; คะแนน 80+ จำนวน {high_score_count} ตัว (คลิกการ์ดเพื่อดูกราฟและแผนซื้อ)</div>
+      </div>
+      <button class="btn-ghost" onclick="switchMainTab('calculator')">ไปหน้าคำนวณแบ่งเงินออม 💰 →</button>
     </div>
     <div class="top3-grid">
       {top3_cards_html}
     </div>
 
-    <div class="screener-card">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
+    <div class="panel-card">
+      <div class="screener-toolbar">
         <div>
-          <strong style="font-size:18px;color:#38bdf8;">📊 ตารางสแกนเปรียบเทียบหุ้นทั้งพอร์ต (Executive Portfolio Screener)</strong>
-          <div style="font-size:13px;color:#94a3b8;">คลิกที่หัวตาราง (⇅) เพื่อเรียงลำดับตามค่าที่ต้องการ หรือ <strong>คลิกที่ชื่อหุ้น</strong> เพื่อเปิดดูกราฟและบทวิเคราะห์ AI ของหุ้นตัวนั้น</div>
+          <div class="section-title">📊 ตารางสแกนหุ้นทั้งพอร์ต</div>
+          <div class="section-sub">คลิกหัวตารางเพื่อเรียงลำดับ หรือคลิกชื่อหุ้นเพื่อดูแผนช้อนซื้อ</div>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
+          <input type="text" id="screenerSearch" class="search-input" placeholder="🔍 ค้นหาชื่อหุ้น..." oninput="filterScreenerTable()">
+          <div class="filter-pills">
+            <button class="f-pill active" data-sf="all" onclick="setScreenerFilter('all', this)">ทั้งหมด ({len(results_sorted)})</button>
+            <button class="f-pill" data-sf="hit" onclick="setScreenerFilter('hit', this)">🎯 แตะโซนซื้อ ({hit_count})</button>
+            <button class="f-pill" data-sf="score" onclick="setScreenerFilter('score', this)">🔥 Score 80+ ({high_score_count})</button>
+            <button class="f-pill" data-sf="peg" onclick="setScreenerFilter('peg', this)">💎 PEG &le; 1.25</button>
+          </div>
         </div>
       </div>
       <div style="overflow-x:auto;">
@@ -696,14 +1062,14 @@ def generate_html_report(
             <tr>
               <th onclick="sortScreener(0, false)">หุ้น ⇅</th>
               <th onclick="sortScreener(1, true)">ราคาล่าสุด ⇅</th>
-              <th onclick="sortScreener(2, true)">กรอบราคา 1 ปี (52W Range) ⇅</th>
-              <th onclick="sortScreener(3, true)">สถานะจุดช้อน ⇅</th>
-              <th onclick="sortScreener(4, true)">Dip Score ⇅</th>
-              <th onclick="sortScreener(5, true)">RSI(14) ⇅</th>
+              <th onclick="sortScreener(2, true)">กรอบ 52 สัปดาห์ ⇅</th>
+              <th onclick="sortScreener(3, true)">สถานะ ⇅</th>
+              <th onclick="sortScreener(4, true)">Score ⇅</th>
+              <th onclick="sortScreener(5, true)">RSI ⇅</th>
               <th onclick="sortScreener(6, true)">Fwd P/E ⇅</th>
               <th onclick="sortScreener(7, true)">PEG ⇅</th>
-              <th onclick="sortScreener(8, true)">เป้า Wall St (Upside) ⇅</th>
-              <th>จุดตั้งรับ ไม้ 1 / ไม้ 2 / ไม้ 3</th>
+              <th onclick="sortScreener(8, true)">เป้า Wall St ⇅</th>
+              <th>ตั้งรับ ไม้ 1 / ไม้ 2 / ไม้ 3</th>
             </tr>
           </thead>
           <tbody>
@@ -716,59 +1082,75 @@ def generate_html_report(
 
   <!-- ==================== TAB 2: SMART DCA BUDGET CALCULATOR ==================== -->
   <section id="tab-calculator" class="tab-pane">
-    <div class="calc-card">
-      <div class="calc-title">💰 เครื่องคิดเลขแบ่งเงินออมรายเดือนอัตโนมัติ (Interactive Smart DCA Budget Allocator)</div>
-      <div class="calc-sub">รองรับหุ้นหลายสกุลเงิน (USD / THB) พร้อมอัตราแลกเปลี่ยนจริงจาก Yahoo Finance ({fx_display} บาท/USD)</div>
+    <div class="panel-card">
+      <div class="section-head">
+        <div>
+          <div class="section-title">💰 เครื่องคิดเลขแบ่งเงินออม Smart DCA รายเดือน</div>
+          <div class="section-sub">กรอกงบออมของคุณ ระบบจะแบ่งสัดส่วนตาม Dip Score และแตกยอดไม้ 1–3 ให้ทันที (เรตสด ฿{fx_display}/USD)</div>
+        </div>
+      </div>
 
       <div class="calc-controls">
         <div class="ctrl-group">
-          <label for="budgetInput">💵 งบออมเดือนนี้ (Monthly Budget)</label>
+          <label for="budgetInput">งบออมเดือนนี้</label>
           <input type="number" id="budgetInput" value="1000" min="10" step="50" oninput="saveAndRecalc()">
         </div>
         <div class="ctrl-group">
-          <label for="currencySelect">🌐 สกุลเงินที่แสดง</label>
+          <label for="currencySelect">สกุลเงิน</label>
           <select id="currencySelect" onchange="onCurrencyChange()">
-            <option value="USD" selected>ดอลลาร์สหรัฐ (USD $)</option>
-            <option value="THB">บาทไทย (THB ฿)</option>
+            <option value="USD" selected>USD ($)</option>
+            <option value="THB">THB (฿)</option>
           </select>
         </div>
         <div class="ctrl-group" id="fxGroup" style="display:none;">
-          <label for="fxInput">💱 อัตราแลกเปลี่ยนสด (บาท / 1 USD)</label>
-          <input type="number" id="fxInput" value="{fx_display}" min="20" max="50" step="0.05" style="width:120px;" oninput="saveAndRecalc()">
+          <label for="fxInput">เรต บาท / 1 USD</label>
+          <input type="number" id="fxInput" value="{fx_display}" min="20" max="50" step="0.05" style="width:110px;" oninput="saveAndRecalc()">
         </div>
-        <div class="ctrl-group">
-          <label for="modeSelect">⚖️ สูตรการกระจายเงิน (Allocation Strategy)</label>
+        <div class="ctrl-group" style="flex:1;min-width:240px;">
+          <label for="modeSelect">สูตรการกระจายเงิน</label>
           <select id="modeSelect" onchange="saveAndRecalc()">
-            <option value="smart_dip" selected>เน้นตัวลดราคาแรง + พื้นฐานดี (Smart Dip-Weighted — แนะนำ)</option>
-            <option value="equal_mult">ตั้งต้นเท่ากัน + คูณตามตัวคูณ DCA (Equal + Multiplier)</option>
-            <option value="top3_only">โฟกัสเฉพาะ 3 อันดับแรกที่น่าช้อนที่สุด (Top 3 Conviction Dip)</option>
+            <option value="smart_dip" selected>Smart Dip-Weighted (เน้นตัวลดแรง + พื้นฐานดี — แนะนำ)</option>
+            <option value="equal_mult">Equal + Multiplier (ตั้งต้นเท่ากัน คูณตามตัวคูณ DCA)</option>
+            <option value="top3_only">Top 3 Conviction (โฟกัสเฉพาะ 3 อันดับแรก)</option>
           </select>
         </div>
       </div>
 
+      <div class="preset-row">
+        <small class="muted">งบด่วน:</small>
+        <button class="quick-chip" onclick="setBudgetPreset(500, 'USD')">$500</button>
+        <button class="quick-chip" onclick="setBudgetPreset(1000, 'USD')">$1,000</button>
+        <button class="quick-chip" onclick="setBudgetPreset(2000, 'USD')">$2,000</button>
+        <button class="quick-chip" onclick="setBudgetPreset(10000, 'THB')">฿10,000</button>
+        <button class="quick-chip" onclick="setBudgetPreset(20000, 'THB')">฿20,000</button>
+        <button class="quick-chip" onclick="setBudgetPreset(50000, 'THB')">฿50,000</button>
+      </div>
+
       <div class="ticker-toggles" id="tickerToggles">
-        <span style="font-size:13px;color:#94a3b8;margin-right:4px;">เลือกหุ้นที่จะออมเดือนนี้:</span>
+        <span style="font-size:12.5px;color:var(--muted);margin-right:4px;">เลือกหุ้นที่จะออม:</span>
+        <button type="button" class="quick-chip" onclick="selectAllTickers(true)">เลือกทั้งหมด</button>
+        <button type="button" class="quick-chip" onclick="selectAllTickers(false)" style="color:var(--muted);">ล้างทั้งหมด</button>
       </div>
 
       <div class="calc-summary-bar">
         <div class="sum-box"><span class="s-label">งบออมรวมทั้งหมด</span><span class="s-val cyan" id="sumTotal">$1,000.00</span></div>
-        <div class="sum-box"><span class="s-label">🟢 เคาะซื้อทันทีวันนี้ (Market Order)</span><span class="s-val green" id="sumBuyNow">$0.00</span></div>
-        <div class="sum-box"><span class="s-label">🎯 ตั้งรอรับไม้ 1 + ไม้ 2 (Limit Orders)</span><span class="s-val" style="color:#38bdf8" id="sumLimit12">$0.00</span></div>
-        <div class="sum-box"><span class="s-label">🛡️ เงินสดสำรองรอช้อนไม้ 3 (Panic Reserve)</span><span class="s-val" style="color:#facc15" id="sumReserve">$0.00</span></div>
+        <div class="sum-box"><span class="s-label">🟢 เคาะซื้อวันนี้ (Market)</span><span class="s-val green" id="sumBuyNow">$0.00</span></div>
+        <div class="sum-box"><span class="s-label">🎯 ตั้งรอรับ ไม้ 1 + ไม้ 2</span><span class="s-val cyan" id="sumLimit12">$0.00</span></div>
+        <div class="sum-box"><span class="s-label">🛡️ สำรอง ไม้ 3 (เผื่อวิกฤต)</span><span class="s-val amber" id="sumReserve">$0.00</span></div>
       </div>
 
       <div style="overflow-x:auto;">
         <table id="calcTable">
           <thead>
             <tr>
-              <th>หุ้น (คลิกดูกราฟ)</th>
-              <th>คะแนนน่าช้อน</th>
-              <th>สัดส่วนพอร์ต</th>
+              <th>หุ้น</th>
+              <th>Score</th>
+              <th>สัดส่วน</th>
               <th>งบรวมที่ได้</th>
-              <th>🟢 เคาะซื้อวันนี้ (ไม่ตกรถ)</th>
-              <th>🎯 ตั้งรับ ไม้ 1 (Limit)</th>
-              <th>💎 ตั้งรับ ไม้ 2 (Limit)</th>
-              <th>🛡️ สำรอง ไม้ 3 (เผื่อวิกฤต)</th>
+              <th>🟢 ซื้อวันนี้</th>
+              <th>🎯 ไม้ 1 (Limit)</th>
+              <th>💎 ไม้ 2 (Limit)</th>
+              <th>🛡️ ไม้ 3 (สำรอง)</th>
             </tr>
           </thead>
           <tbody id="calcTableBody"></tbody>
@@ -779,21 +1161,11 @@ def generate_html_report(
 
   <!-- ==================== TAB 3: AI DEEP DIVE & CHARTS ==================== -->
   <section id="tab-deepdive" class="tab-pane">
-    <div class="nav-bar">
-      <span style="color:#94a3b8;font-size:13px;margin-right:6px;">เลือกดูหุ้นรายตัว:</span>
+    <div class="picker-bar">
+      <button class="btn-ghost" onclick="switchMainTab('overview')" style="padding:5px 10px;font-size:12.5px;">← กลับภาพรวม</button>
       {nav_pills}
-      <button class="filter-btn active" id="showAllStocksBtn" onclick="filterCards('all', this)" style="margin-left:auto;">📋 ดูทุกตัวเรียงกัน ({len(results_sorted)})</button>
-    </div>
-
-    <div class="filter-bar">
-      <div class="filter-tabs">
-        <button class="filter-btn" onclick="filterCards('score', this)">🔥 น่าช้อนทันที Score 80+</button>
-        <button class="filter-btn" onclick="filterCards('hit', this)">🎯 แตะโซนไม้ตั้งรับแล้ว</button>
-        <button class="filter-btn" onclick="filterCards('peg', this)">💎 หุ้นเติบโตไม่แพง (PEG &le; 1.25)</button>
-      </div>
-      <div style="display:flex;gap:10px;align-items:center;">
-        <button class="quick-chip" id="toggleCompactBtn" onclick="toggleCompactMode()" style="padding:7px 14px;">🗂️ ย่อกราฟทั้งหมด (อ่านเฉพาะบทวิเคราะห์ AI)</button>
-      </div>
+      <button class="f-pill active" id="showAllStocksBtn" onclick="filterCards('all', this)" style="margin-left:auto;">ดูทั้งหมด ({len(results_sorted)})</button>
+      <button class="btn-ghost" id="toggleCompactBtn" onclick="toggleCompactMode()" style="padding:5px 10px;font-size:12.5px;">🗂️ ย่อกราฟ</button>
     </div>
 
     {''.join(cards_html)}
@@ -801,29 +1173,29 @@ def generate_html_report(
 
   <!-- ==================== TAB 4: SMART DCA vs FIXED DCA BACKTEST ==================== -->
   <section id="tab-backtest" class="tab-pane">
-    <div class="calc-card" style="border-color:#38bdf8;">
-      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:14px;">
+    <div class="panel-card">
+      <div class="section-head">
         <div>
-          <div class="calc-title" style="color:#38bdf8;">🧪 ทดสอบย้อนหลัง: Smart DCA vs Fixed DCA (Point-in-Time Backtester)</div>
-          <div class="calc-sub" style="margin-bottom:0;">เปรียบเทียบการออมเท่ากันทุกเดือน (Fixed DCA) กับการปรับสัดส่วนออมตาม Dip Score + เก็บเงินสดรอช้อนตอนย่อแรง (Smart DCA) แบบไม่ใช้ข้อมูลอนาคต</div>
+          <div class="section-title">🧪 ทดสอบย้อนหลัง: Smart DCA vs Fixed DCA</div>
+          <div class="section-sub">เปรียบเทียบการออมเท่ากันทุกเดือน (Fixed DCA) กับการปรับสัดส่วนตาม Dip Score + เก็บเงินสดช้อนตอนย่อ (ราคาปรับแตกพาร์/ปันผลแล้ว)</div>
         </div>
         <div style="display:flex;gap:8px;align-items:center;">
-          <select id="btPeriodSelect" style="background:#1e293b;color:#fff;border:1px solid #475569;border-radius:8px;padding:8px 12px;font-weight:700;font-family:inherit;">
+          <select id="btPeriodSelect" style="background:var(--surface-2);color:#fff;border:1px solid var(--border-strong);border-radius:8px;padding:7px 12px;font-weight:700;font-family:inherit;">
             <option value="2y">ย้อนหลัง 2 ปี</option>
-            <option value="3y" selected>ย้อนหลัง 3 ปี (แนะนำ)</option>
+            <option value="3y" selected>ย้อนหลัง 3 ปี</option>
             <option value="5y">ย้อนหลัง 5 ปี</option>
           </select>
-          <button id="runBtBtn" class="btn-add" style="background:#38bdf8;" onclick="runBacktestFromApi()">▶️ รัน Backtest</button>
+          <button id="runBtBtn" class="btn-primary" onclick="runBacktestFromApi()">▶️ รัน Backtest</button>
         </div>
       </div>
 
-      <div id="btStatus" style="font-size:14px;color:#facc15;margin-bottom:12px;"></div>
+      <div id="btStatus" style="font-size:13.5px;color:var(--amber);margin-bottom:12px;"></div>
 
       <div class="calc-summary-bar" id="btSummaryBar" style="display:none;">
         <div class="sum-box"><span class="s-label">Fixed DCA ผลตอบแทนรวม</span><span class="s-val" id="btFixedRet">-</span></div>
         <div class="sum-box"><span class="s-label">Smart DCA ผลตอบแทนรวม</span><span class="s-val green" id="btSmartRet">-</span></div>
-        <div class="sum-box"><span class="s-label">ส่วนต่างผลตอบแทน (Alpha)</span><span class="s-val cyan" id="btAlpha">-</span></div>
-        <div class="sum-box"><span class="s-label">Max Drawdown เฉลี่ย (Fixed → Smart)</span><span class="s-val" id="btMaxDD">-</span></div>
+        <div class="sum-box"><span class="s-label">ส่วนต่าง (Alpha)</span><span class="s-val cyan" id="btAlpha">-</span></div>
+        <div class="sum-box"><span class="s-label">Max Drawdown เฉลี่ย</span><span class="s-val" id="btMaxDD">-</span></div>
       </div>
 
       <div style="overflow-x:auto;">
@@ -832,12 +1204,12 @@ def generate_html_report(
             <tr>
               <th>หุ้น</th>
               <th>ช่วงเวลา</th>
-              <th>Fixed DCA Return</th>
-              <th>Smart DCA Return</th>
-              <th>Alpha (ส่วนต่าง)</th>
-              <th>ต้นทุนเฉลี่ย (Fixed → Smart)</th>
-              <th>Max Drawdown (Fixed → Smart)</th>
-              <th>จำนวนครั้งช้อน Dip</th>
+              <th>Fixed DCA</th>
+              <th>Smart DCA</th>
+              <th>Alpha</th>
+              <th>ต้นทุนเฉลี่ย (Fix → Smart)</th>
+              <th>Max Drawdown</th>
+              <th>ช้อน Dip</th>
             </tr>
           </thead>
           <tbody id="btTableBody"></tbody>
@@ -848,10 +1220,45 @@ def generate_html_report(
 
 </div>
 
+<div class="toast-banner" id="toastBanner"></div>
+
 <script>
 const CHART_CONFIGS = {charts_json};
 const LIVE_FX_USD_THB = {fx_display};
 const renderedCharts = new Map();
+
+function toggleAddDrawer() {{
+  const d = document.getElementById('addDrawer');
+  if (!d) return;
+  d.classList.toggle('open');
+  if (d.classList.contains('open')) {{
+    const inp = document.getElementById('newTickerInput');
+    if (inp) inp.focus();
+  }}
+}}
+
+// --- Screener Search & Quick Filter ---
+let activeScreenerFilter = 'all';
+function setScreenerFilter(mode, btn) {{
+  activeScreenerFilter = mode;
+  document.querySelectorAll('.filter-pills .f-pill').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  filterScreenerTable();
+}}
+
+function filterScreenerTable() {{
+  const q = (document.getElementById('screenerSearch')?.value || '').trim().toLowerCase();
+  document.querySelectorAll('#screenerTable tbody tr.screener-row').forEach(row => {{
+    const t = (row.dataset.ticker || '').toLowerCase();
+    const n = (row.dataset.name || '').toLowerCase();
+    const matchText = !q || t.includes(q) || n.includes(q);
+    let matchFilter = true;
+    if (activeScreenerFilter === 'hit') matchFilter = row.dataset.hit === '1';
+    else if (activeScreenerFilter === 'score') matchFilter = row.dataset.score === '1';
+    else if (activeScreenerFilter === 'peg') matchFilter = row.dataset.peg === '1';
+    row.style.display = (matchText && matchFilter) ? '' : 'none';
+  }});
+}}
 
 function renderChart(cfg) {{
   const container = document.getElementById(cfg.id);
@@ -865,11 +1272,11 @@ function renderChart(cfg) {{
 
   const chart = LightweightCharts.createChart(container, {{
     width: container.clientWidth,
-    layout: {{ background: {{ type: 'solid', color: '#0b0f19' }}, textColor: '#94a3b8' }},
-    grid: {{ vertLines: {{ color: '#1e293b' }}, horzLines: {{ color: '#1e293b' }} }},
+    layout: {{ background: {{ type: 'solid', color: '#090d16' }}, textColor: '#94a3b8' }},
+    grid: {{ vertLines: {{ color: '#172033' }}, horzLines: {{ color: '#172033' }} }},
     crosshair: {{ mode: LightweightCharts.CrosshairMode.Normal }},
-    rightPriceScale: {{ borderColor: '#334155' }},
-    timeScale: {{ borderColor: '#334155', timeVisible: true }},
+    rightPriceScale: {{ borderColor: '#26334d' }},
+    timeScale: {{ borderColor: '#26334d', timeVisible: true }},
   }});
   renderedCharts.set(cfg.id, chart);
 
@@ -880,11 +1287,11 @@ function renderChart(cfg) {{
   if (cfg.markers && cfg.markers.length > 0) candleSeries.setMarkers(cfg.markers);
 
   chart.addLineSeries({{ color: '#f59e0b', lineWidth: 2, title: 'EMA 50' }}).setData(cfg.ema50);
-  chart.addLineSeries({{ color: '#a855f7', lineWidth: 2, title: 'EMA 200 (ต้นทุนระยะยาว)' }}).setData(cfg.ema200);
+  chart.addLineSeries({{ color: '#a855f7', lineWidth: 2, title: 'EMA 200' }}).setData(cfg.ema200);
 
-  candleSeries.createPriceLine({{ price: cfg.tier1, color: '#4ade80', lineWidth: 2, lineStyle: LightweightCharts.LineStyle.Dashed, axisLabelVisible: true, title: 'ไม้ 1 (30%): ย่อสะสม' }});
-  candleSeries.createPriceLine({{ price: cfg.tier2, color: '#22c55e', lineWidth: 2, lineStyle: LightweightCharts.LineStyle.Solid, axisLabelVisible: true, title: 'ไม้ 2 (40%): โซนคุณค่า' }});
-  candleSeries.createPriceLine({{ price: cfg.tier3, color: '#eab308', lineWidth: 2, lineStyle: LightweightCharts.LineStyle.Dashed, axisLabelVisible: true, title: 'ไม้ 3 (30%): ของถูกพิเศษ' }});
+  candleSeries.createPriceLine({{ price: cfg.tier1, color: '#4ade80', lineWidth: 2, lineStyle: LightweightCharts.LineStyle.Dashed, axisLabelVisible: true, title: 'ไม้ 1 (30%)' }});
+  candleSeries.createPriceLine({{ price: cfg.tier2, color: '#22c55e', lineWidth: 2, lineStyle: LightweightCharts.LineStyle.Solid, axisLabelVisible: true, title: 'ไม้ 2 (40%)' }});
+  candleSeries.createPriceLine({{ price: cfg.tier3, color: '#eab308', lineWidth: 2, lineStyle: LightweightCharts.LineStyle.Dashed, axisLabelVisible: true, title: 'ไม้ 3 (30%)' }});
 
   chart.timeScale().fitContent();
   window.addEventListener('resize', () => {{
@@ -900,6 +1307,7 @@ function renderVisibleCharts() {{
 }}
 
 let backtestLoaded = false;
+let deepDiveInitialized = false;
 function switchMainTab(tabName) {{
   document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-tab-btn').forEach(b => b.classList.remove('active'));
@@ -908,14 +1316,22 @@ function switchMainTab(tabName) {{
   if (targetPane) targetPane.classList.add('active');
   if (targetBtn) targetBtn.classList.add('active');
   window.scrollTo({{ top: 0, behavior: 'smooth' }});
-  if (tabName === 'deepdive') setTimeout(renderVisibleCharts, 60);
+  if (tabName === 'deepdive') {{
+    if (!deepDiveInitialized && CHART_CONFIGS.length > 0) {{
+      openStockDeepDive(CHART_CONFIGS[0].ticker);
+      return;
+    }}
+    setTimeout(renderVisibleCharts, 60);
+  }}
   if (tabName === 'backtest' && !backtestLoaded) runBacktestFromApi();
 }}
 
 function openStockDeepDive(ticker) {{
+  deepDiveInitialized = true;
   switchMainTab('deepdive');
   document.querySelectorAll('.stock-pick-btn').forEach(b => b.classList.toggle('active', b.getAttribute('data-pick') === ticker));
-  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  const showAllBtn = document.getElementById('showAllStocksBtn');
+  if (showAllBtn) showAllBtn.classList.remove('active');
   document.querySelectorAll('.stock-card').forEach(card => {{
     card.style.display = (card.getAttribute('data-ticker') === ticker) ? '' : 'none';
   }});
@@ -923,8 +1339,8 @@ function openStockDeepDive(ticker) {{
 }}
 
 function filterCards(mode, btn) {{
+  deepDiveInitialized = true;
   document.querySelectorAll('.stock-pick-btn').forEach(b => b.classList.remove('active'));
-  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
   if (btn) btn.classList.add('active');
   document.querySelectorAll('.stock-card').forEach(card => {{
     if (mode === 'all') card.style.display = '';
@@ -939,9 +1355,9 @@ function toggleCompactMode() {{
   document.body.classList.toggle('compact-mode');
   const btn = document.getElementById('toggleCompactBtn');
   if (document.body.classList.contains('compact-mode')) {{
-    btn.textContent = '📈 แสดงกราฟ TradingView ทั้งหมด';
+    btn.textContent = '📈 แสดงกราฟ';
   }} else {{
-    btn.textContent = '🗂️ ย่อกราฟทั้งหมด (อ่านเฉพาะบทวิเคราะห์ AI)';
+    btn.textContent = '🗂️ ย่อกราฟ';
     setTimeout(renderVisibleCharts, 60);
   }}
 }}
@@ -964,9 +1380,26 @@ function sortScreener(colIdx, numeric) {{
   rows.forEach(r => tbody.appendChild(r));
 }}
 
-// --- Interactive Monthly Budget Calculator Engine (Multi-Currency + Live FX) ---
+// --- Interactive Monthly Budget Calculator ---
 const STORAGE_KEY = 'smart_dca_prefs_v4';
 const selectedTickers = new Set(CHART_CONFIGS.map(c => c.ticker));
+
+function setBudgetPreset(amount, cur) {{
+  document.getElementById('currencySelect').value = cur;
+  document.getElementById('fxGroup').style.display = cur === 'THB' ? 'flex' : 'none';
+  document.getElementById('budgetInput').value = amount;
+  document.getElementById('budgetInput').step = cur === 'THB' ? '1000' : '50';
+  saveAndRecalc();
+}}
+
+function selectAllTickers(checked) {{
+  selectedTickers.clear();
+  if (checked) CHART_CONFIGS.forEach(c => selectedTickers.add(c.ticker));
+  document.querySelectorAll('#tickerToggles input[type="checkbox"]').forEach(cb => {{
+    cb.checked = checked;
+  }});
+  saveAndRecalc();
+}}
 
 function loadSavedPrefs() {{
   try {{
@@ -1074,7 +1507,6 @@ function recalcBudget() {{
     const aNow = alloc * pNow, aT1 = alloc * pT1, aT2 = alloc * pT2, aT3 = alloc * pT3;
     totalNow += aNow; totalLim12 += (aT1 + aT2); totalRes += aT3;
 
-    // Accurate cross-currency share conversion
     let allocInStockCur = alloc;
     if (cur === 'THB' && c.currency === 'USD') allocInStockCur = alloc / fx;
     else if (cur === 'USD' && c.currency === 'THB') allocInStockCur = alloc * fx;
@@ -1083,14 +1515,14 @@ function recalcBudget() {{
 
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td><a href="javascript:void(0)" onclick="openStockDeepDive('${{c.ticker}}')" style="color:#38bdf8;font-weight:700;text-decoration:none;">${{c.ticker}} 🔍</a> <small>(${{sSym}}${{c.close.toFixed(2)}})</small></td>
-      <td><span style="color:#4ade80;font-weight:700;">${{c.dip_score}}/100</span> <small>(${{c.dca_mult_num.toFixed(1)}}x)</small></td>
+      <td><a href="javascript:void(0)" onclick="openStockDeepDive('${{c.ticker}}')" style="color:#38bdf8;font-weight:700;text-decoration:none;">${{c.ticker}}</a> <small class="muted">(${{sSym}}${{c.close.toFixed(2)}})</small></td>
+      <td><span class="green"><strong>${{c.dip_score}}</strong></span> <small class="muted">(${{c.dca_mult_num.toFixed(1)}}x)</small></td>
       <td><strong>${{(w * 100).toFixed(1)}}%</strong></td>
-      <td style="color:#facc15;font-weight:700;">${{fmtMoney(alloc, cur)}}<br><small>≈ ${{estShares.toFixed(2)}} หุ้น</small></td>
-      <td class="green"><strong>${{fmtMoney(aNow, cur)}}</strong><br><small>@ ตลาด (${{sSym}}${{c.close.toFixed(2)}})</small></td>
-      <td class="cyan"><strong>${{fmtMoney(aT1, cur)}}</strong><br><small>@ ${{sSym}}${{c.tier1.toFixed(2)}}</small></td>
-      <td class="cyan"><strong>${{fmtMoney(aT2, cur)}}</strong><br><small>@ ${{sSym}}${{c.tier2.toFixed(2)}}</small></td>
-      <td style="color:#facc15"><strong>${{fmtMoney(aT3, cur)}}</strong><br><small>@ ${{sSym}}${{c.tier3.toFixed(2)}}</small></td>
+      <td class="amber"><strong>${{fmtMoney(alloc, cur)}}</strong><br><small class="muted">≈ ${{estShares.toFixed(2)}} หุ้น</small></td>
+      <td class="green"><strong>${{fmtMoney(aNow, cur)}}</strong><br><small class="muted">@ ${{sSym}}${{c.close.toFixed(2)}}</small></td>
+      <td class="cyan"><strong>${{fmtMoney(aT1, cur)}}</strong><br><small class="muted">@ ${{sSym}}${{c.tier1.toFixed(2)}}</small></td>
+      <td class="cyan"><strong>${{fmtMoney(aT2, cur)}}</strong><br><small class="muted">@ ${{sSym}}${{c.tier2.toFixed(2)}}</small></td>
+      <td class="amber"><strong>${{fmtMoney(aT3, cur)}}</strong><br><small class="muted">@ ${{sSym}}${{c.tier3.toFixed(2)}}</small></td>
     `;
     tbody.appendChild(tr);
   }});
@@ -1103,7 +1535,7 @@ function recalcBudget() {{
 
 initBudgetCalculator();
 
-// --- API Client (Portfolio + Backtest) ---
+// --- API Client ---
 const API_BASE = (window.location.protocol === 'file:') ? 'http://127.0.0.1:8765' : '';
 
 async function runBacktestFromApi() {{
@@ -1111,7 +1543,7 @@ async function runBacktestFromApi() {{
   const status = document.getElementById('btStatus');
   const btn = document.getElementById('runBtBtn');
   btn.disabled = true;
-  status.textContent = `⏳ กำลังจำลอง Backtest (${{period}}) สำหรับหุ้นทั้งพอร์ตแบบ Batch...`;
+  status.textContent = `⏳ กำลังจำลอง Backtest (${{period}})...`;
   try {{
     const resp = await fetch(`${{API_BASE}}/api/backtest?period=${{encodeURIComponent(period)}}`);
     const data = await resp.json();
@@ -1127,7 +1559,7 @@ async function runBacktestFromApi() {{
     document.getElementById('btFixedRet').textContent = `${{s.fixed_return_pct >= 0 ? '+' : ''}}${{s.fixed_return_pct}}%`;
     document.getElementById('btSmartRet').textContent = `${{s.smart_return_pct >= 0 ? '+' : ''}}${{s.smart_return_pct}}%`;
     const alphaEl = document.getElementById('btAlpha');
-    alphaEl.textContent = `${{s.portfolio_alpha_pct >= 0 ? '+' : ''}}${{s.portfolio_alpha_pct}}% (ชนะ ${{s.smart_wins}}/${{s.count}} ตัว)`;
+    alphaEl.textContent = `${{s.portfolio_alpha_pct >= 0 ? '+' : ''}}${{s.portfolio_alpha_pct}}% (ชนะ ${{s.smart_wins}}/${{s.count}})`;
     alphaEl.className = 's-val ' + (s.portfolio_alpha_pct >= 0 ? 'green' : 'red');
     document.getElementById('btMaxDD').textContent = `${{s.avg_fixed_max_dd_pct}}% → ${{s.avg_smart_max_dd_pct}}%`;
 
@@ -1137,8 +1569,8 @@ async function runBacktestFromApi() {{
       const aClass = r.alpha_pct >= 0 ? 'green' : 'red';
       const tr = document.createElement('tr');
       tr.innerHTML = `
-        <td><strong style="color:#38bdf8;">${{r.ticker}}</strong></td>
-        <td><small>${{r.start_date}} → ${{r.end_date}} (${{r.months}} ด.)</small></td>
+        <td><strong class="cyan">${{r.ticker}}</strong></td>
+        <td><small class="muted">${{r.start_date}} → ${{r.end_date}}</small></td>
         <td>${{r.fixed_return_pct >= 0 ? '+' : ''}}${{r.fixed_return_pct}}%</td>
         <td class="green"><strong>${{r.smart_return_pct >= 0 ? '+' : ''}}${{r.smart_return_pct}}%</strong></td>
         <td class="${{aClass}}"><strong>${{r.alpha_pct >= 0 ? '+' : ''}}${{r.alpha_pct}}%</strong></td>
@@ -1177,11 +1609,27 @@ async function refreshAllPrices() {{
   await callPortfolioApi('/api/refresh', {{}});
 }}
 
+function showToast(text, isSuccess = false) {{
+  const t = document.getElementById('toastBanner');
+  if (!t) return;
+  t.textContent = text;
+  t.style.borderColor = isSuccess ? 'rgba(34,197,94,0.6)' : 'rgba(56,189,248,0.5)';
+  t.classList.add('show');
+}}
+
+function hideToast() {{
+  const t = document.getElementById('toastBanner');
+  if (t) t.classList.remove('show');
+}}
+
 async function callPortfolioApi(path, payload) {{
   const btn = document.getElementById('addStockBtn');
+  const refBtn = document.getElementById('refreshBtn');
   const msg = document.getElementById('addStatusMsg');
   if (btn) btn.disabled = true;
-  if (msg) msg.textContent = '⏳ กำลังดึงข้อมูลแบบ Batch และอัปเดต AI CIO...';
+  if (refBtn) {{ refBtn.disabled = true; refBtn.textContent = '⏳ กำลังอัปเดต...'; }}
+  if (msg) msg.textContent = '⏳ กำลังอัปเดตข้อมูลและบทวิเคราะห์ AI...';
+  showToast('⏳ กำลังดึงราคาล่าสุดและซิงก์ข้อมูล...');
   try {{
     const headers = {{ 'Content-Type': 'application/json' }};
     const savedToken = sessionStorage.getItem('smart_dca_admin_token');
@@ -1197,6 +1645,8 @@ async function callPortfolioApi(path, payload) {{
       if (!tok) {{
         if (msg) msg.textContent = '';
         if (btn) btn.disabled = false;
+        if (refBtn) {{ refBtn.disabled = false; refBtn.textContent = '🔄 ดึงราคาล่าสุด'; }}
+        hideToast();
         return;
       }}
       sessionStorage.setItem('smart_dca_admin_token', tok.trim());
@@ -1213,13 +1663,18 @@ async function callPortfolioApi(path, payload) {{
       alert(data.message || 'เกิดข้อผิดพลาด');
       if (msg) msg.textContent = '';
       if (btn) btn.disabled = false;
+      if (refBtn) {{ refBtn.disabled = false; refBtn.textContent = '🔄 ดึงราคาล่าสุด'; }}
+      hideToast();
       return;
     }}
-    if (msg) msg.textContent = '✅ สำเร็จ! กำลังรีโหลดหน้าเว็บ...';
+    if (msg) msg.textContent = '✅ สำเร็จ! กำลังรีโหลด...';
+    showToast('✅ อัปเดตสำเร็จ! กำลังรีโหลดหน้าเว็บ...', true);
     setTimeout(() => window.location.reload(), 300);
   }} catch (err) {{
     if (msg) msg.textContent = '';
     if (btn) btn.disabled = false;
+    if (refBtn) {{ refBtn.disabled = false; refBtn.textContent = '🔄 ดึงราคาล่าสุด'; }}
+    hideToast();
     alert('หากต้องการกดเพิ่ม/ลบหุ้น ให้เปิดผ่าน http://127.0.0.1:8765');
   }}
 }}
@@ -1228,7 +1683,6 @@ async function callPortfolioApi(path, payload) {{
 </html>"""
 
     out_path = ROOT_DIR / "trade_plan.html"
-    # Atomic write: write to temp file in same directory then atomically replace
     fd, tmp_name = tempfile.mkstemp(prefix=".trade_plan_", suffix=".tmp", dir=str(out_path.parent))
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as tmp_f:

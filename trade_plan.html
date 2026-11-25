@@ -2,12 +2,10 @@
 <html lang="th">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>AI Chief Investment Officer — ระบบวางแผนออมหุ้น Smart DCA & Buy the Dip (v4.0)</title>
 <script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap');
-  *, *::before, *::after { box-sizing: border-box; }
   body {
     font-family: 'Sarabun', 'Segoe UI', Tahoma, sans-serif;
     background: #0b0f19;
@@ -15,7 +13,6 @@
     margin: 0;
     padding: 24px;
     line-height: 1.65;
-    overflow-x: hidden;
   }
   .container { max-width: 1240px; margin: 0 auto; }
   h1 { margin-top: 0; color: #4ade80; font-size: 26px; }
@@ -120,7 +117,7 @@
   }
   .cio-title { font-size: 14px; font-weight: 700; color: #38bdf8; letter-spacing: 0.4px; margin-bottom: 6px; }
   .cio-headline { font-size: 19px; font-weight: 700; color: #4ade80; margin-bottom: 14px; }
-  .cio-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap: 14px; }
+  .cio-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(460px, 1fr)); gap: 14px; }
   .cio-item { background: rgba(11,15,25,0.65); padding: 12px 16px; border-radius: 8px; border: 1px solid rgba(51,65,85,0.7); }
   .cio-item strong { display: block; color: #f8fafc; font-size: 14px; margin-bottom: 4px; }
   .cio-item p { margin: 0; color: #cbd5e1; font-size: 14.5px; }
@@ -188,27 +185,12 @@
   .tab-pane { display: none; }
   .tab-pane.active { display: block; animation: fadeIn 0.2s ease-out; }
   @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
-  .top3-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: 16px; margin-bottom: 24px; }
+  .top3-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 16px; margin-bottom: 24px; }
   .top3-card { background: linear-gradient(145deg, #131b2e 0%, #0f172a 100%); border: 1px solid #22c55e; border-radius: 12px; padding: 16px 18px; cursor: pointer; transition: 0.18s; box-shadow: 0 6px 18px rgba(0,0,0,0.3); }
   .top3-card:hover { transform: translateY(-3px); border-color: #4ade80; box-shadow: 0 10px 24px rgba(34,197,94,0.18); }
   .rank-badge { background: rgba(34,197,94,0.2); color: #4ade80; border: 1px solid #22c55e; padding: 2px 8px; border-radius: 6px; font-size: 12px; font-weight: 700; }
   .stock-pick-btn { background: #1e293b; color: #e2e8f0; border: 1px solid #334155; padding: 7px 14px; border-radius: 8px; font-family: inherit; font-weight: 700; font-size: 14px; cursor: pointer; transition: 0.15s; }
   .stock-pick-btn:hover, .stock-pick-btn.active { background: #38bdf8; color: #0b0f19; border-color: #38bdf8; }
-  @media (max-width: 768px) {
-    body { padding: 12px; }
-    .top-navbar { margin: -12px -12px 16px -12px; padding: 10px 12px; }
-    .navbar-inner { gap: 10px; }
-    .nav-tabs { width: 100%; justify-content: space-between; }
-    .nav-tab-btn { padding: 7px 10px; font-size: 13px; flex: 1 1 auto; justify-content: center; }
-    .card, .screener-card, .calc-card { padding: 14px; }
-    .add-input { width: 100%; max-width: 100%; }
-    .add-form { width: 100%; }
-    .ticker { font-size: 22px; }
-    .price { font-size: 20px; }
-    .cio-headline { font-size: 16.5px; }
-    .tv-chart { height: 300px; }
-    th, td { padding: 8px 9px; font-size: 13px; }
-  }
 </style>
 </head>
 <body>
@@ -239,7 +221,7 @@
     </nav>
 
     <div style="display:flex;align-items:center;gap:10px;">
-      <span style="font-size:12.5px;color:#94a3b8;">🕒 อัปเดต: <strong style="color:#4ade80;">2026-11-25 14:03:39 (เวลาไทย)</strong></span>
+      <span style="font-size:12.5px;color:#94a3b8;">🕒 อัปเดต: <strong style="color:#4ade80;">2026-11-25 14:22:02</strong></span>
       <button class="quick-chip" style="background:#0284c7;color:#fff;border-color:#38bdf8;padding:7px 12px;" onclick="refreshAllPrices()">🔄 ดึงราคาล่าสุด</button>
     </div>
   </div>
@@ -249,34 +231,6 @@
 
   <!-- ==================== TAB 1: OVERVIEW & SCREENER ==================== -->
   <section id="tab-overview" class="tab-pane active">
-    
-    <!-- Global Macro & Fear/Greed Radar -->
-    <div style="background:linear-gradient(135deg,#0f172a 0%,#131b2e 100%);border:1px solid #22c55e;border-left:5px solid #22c55e;border-radius:12px;padding:14px 18px;margin-bottom:18px;display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:14px;">
-      <div style="flex:1;min-width:260px;">
-        <div style="font-size:12px;color:#94a3b8;font-weight:700;letter-spacing:0.4px;">🌡️ MACRO &amp; FEAR/GREED RADAR (อุณหภูมิตลาดโลก)</div>
-        <div style="font-size:17px;font-weight:700;color:#22c55e;margin:2px 0;">🔥 ตลาดกลัวหนัก (Fear / Panic)</div>
-        <div style="font-size:13px;color:#cbd5e1;">จังหวะทองของสาย Smart DCA! เพิ่มงบช้อนหุ้นคุณภาพดีที่ลงมาชนแนวรับ</div>
-      </div>
-      <div style="display:flex;flex-wrap:wrap;gap:10px;">
-        <div class="sum-box" style="padding:8px 14px;min-width:115px;">
-          <span class="s-label">VIX (ความกลัว)</span>
-          <span class="s-val" style="font-size:16px;color:#22c55e;">26.36<small style="font-size:11px;color:#94a3b8;"> (-1.0%)</small></span>
-        </div>
-        <div class="sum-box" style="padding:8px 14px;min-width:110px;">
-          <span class="s-label">US 10Y Yield</span>
-          <span class="s-val" style="font-size:16px;color:#facc15;">4.90%</span>
-        </div>
-        <div class="sum-box" style="padding:8px 14px;min-width:155px;">
-          <span class="s-label">S&amp;P 500</span>
-          <span class="s-val cyan" style="font-size:16px;">7,201 <small style="font-size:11px;color:#94a3b8;">-2.6% vs EMA200</small></span>
-        </div>
-        <div class="sum-box" style="padding:8px 14px;min-width:105px;">
-          <span class="s-label">USD / THB</span>
-          <span class="s-val green" style="font-size:16px;">฿34.03</span>
-        </div>
-      </div>
-    </div>
-        
     <div class="add-bar">
       <div class="add-form">
         <strong style="color:#38bdf8;font-size:15px;">➕ เพิ่มหุ้นเข้าพอร์ต:</strong>
@@ -689,7 +643,7 @@
             </div>
 
             <div class="cio-box" style="border-left: 4px solid #22c55e;">
-                <div class="cio-title">🧠 บทวิเคราะห์เจาะลึกจาก AI Chief Investment Officer <span style="font-size:11.5px;color:#94a3b8;font-weight:400;margin-left:8px;">(Cache: 1.0 ชม. ที่แล้ว · รีเฟรชอัตโนมัติทุก 7 วัน หรือเมื่อราคาขยับ ±8%)</span></div>
+                <div class="cio-title">🧠 บทวิเคราะห์เจาะลึกจาก AI Chief Investment Officer <span style="font-size:11.5px;color:#94a3b8;font-weight:400;margin-left:8px;">(Cache: 1.3 ชม. ที่แล้ว · รีเฟรชอัตโนมัติทุก 7 วัน หรือเมื่อราคาขยับ ±8%)</span></div>
                 <div class="cio-headline">เป็นโอกาส &#x27;Buy the Dip&#x27; ระดับคุณภาพ ทยอยสะสมไม้แรกที่ราคาปัจจุบันและตั้งรับตามบันได 3 ไม้ เนื่องจากราคาปรับฐานหลุด EMA 200 สวนทางกับพื้นฐานที่ยังเติบโตแกร่งสุดในกลุ่มเซมิคอนดักเตอร์</div>
                 <div class="cio-grid">
                     <div class="cio-item">
@@ -857,7 +811,7 @@
             </div>
 
             <div class="cio-box" style="border-left: 4px solid #22c55e;">
-                <div class="cio-title">🧠 บทวิเคราะห์เจาะลึกจาก AI Chief Investment Officer <span style="font-size:11.5px;color:#94a3b8;font-weight:400;margin-left:8px;">(Cache: 1.0 ชม. ที่แล้ว · รีเฟรชอัตโนมัติทุก 7 วัน หรือเมื่อราคาขยับ ±8%)</span></div>
+                <div class="cio-title">🧠 บทวิเคราะห์เจาะลึกจาก AI Chief Investment Officer <span style="font-size:11.5px;color:#94a3b8;font-weight:400;margin-left:8px;">(Cache: 1.3 ชม. ที่แล้ว · รีเฟรชอัตโนมัติทุก 7 วัน หรือเมื่อราคาขยับ ±8%)</span></div>
                 <div class="cio-headline">โอกาสทองสะสมหุ้นเติบโตสูงที่ถูกเทขายเกินจริง แนะนำทยอยเปิดไม้แรกในโซน $604 - $630 เพื่อเกาะคลื่น AI Memory Supercycle</div>
                 <div class="cio-grid">
                     <div class="cio-item">
@@ -1025,7 +979,7 @@
             </div>
 
             <div class="cio-box" style="border-left: 4px solid #22c55e;">
-                <div class="cio-title">🧠 บทวิเคราะห์เจาะลึกจาก AI Chief Investment Officer <span style="font-size:11.5px;color:#94a3b8;font-weight:400;margin-left:8px;">(Cache: 1.0 ชม. ที่แล้ว · รีเฟรชอัตโนมัติทุก 7 วัน หรือเมื่อราคาขยับ ±8%)</span></div>
+                <div class="cio-title">🧠 บทวิเคราะห์เจาะลึกจาก AI Chief Investment Officer <span style="font-size:11.5px;color:#94a3b8;font-weight:400;margin-left:8px;">(Cache: 1.3 ชม. ที่แล้ว · รีเฟรชอัตโนมัติทุก 7 วัน หรือเมื่อราคาขยับ ±8%)</span></div>
                 <div class="cio-headline">ย่อตัวลงแรง -36.2% จากจุดสูงสุดคือโอกาสทองช้อนซื้อไม้แรกทันทีที่โซน Volume หนาแน่น $151.74</div>
                 <div class="cio-grid">
                     <div class="cio-item">
@@ -1186,7 +1140,7 @@
             </div>
 
             <div class="cio-box" style="border-left: 4px solid #22c55e;">
-                <div class="cio-title">🧠 บทวิเคราะห์เจาะลึกจาก AI Chief Investment Officer <span style="font-size:11.5px;color:#94a3b8;font-weight:400;margin-left:8px;">(Cache: 1.0 ชม. ที่แล้ว · รีเฟรชอัตโนมัติทุก 7 วัน หรือเมื่อราคาขยับ ±8%)</span></div>
+                <div class="cio-title">🧠 บทวิเคราะห์เจาะลึกจาก AI Chief Investment Officer <span style="font-size:11.5px;color:#94a3b8;font-weight:400;margin-left:8px;">(Cache: 1.3 ชม. ที่แล้ว · รีเฟรชอัตโนมัติทุก 7 วัน หรือเมื่อราคาขยับ ±8%)</span></div>
                 <div class="cio-headline">โอกาสทองสำหรับการทยอยสะสมไม้แรก (Buy the Dip) เนื่องจากราคาหลุดต่ำกว่า EMA 200 ในขณะที่ Forward P/E ลดลงมาอยู่ในระดับเพียง 16.6x เท่านั้น</div>
                 <div class="cio-grid">
                     <div class="cio-item">
@@ -1354,7 +1308,7 @@
             </div>
 
             <div class="cio-box" style="border-left: 4px solid #22c55e;">
-                <div class="cio-title">🧠 บทวิเคราะห์เจาะลึกจาก AI Chief Investment Officer <span style="font-size:11.5px;color:#94a3b8;font-weight:400;margin-left:8px;">(Cache: 1.0 ชม. ที่แล้ว · รีเฟรชอัตโนมัติทุก 7 วัน หรือเมื่อราคาขยับ ±8%)</span></div>
+                <div class="cio-title">🧠 บทวิเคราะห์เจาะลึกจาก AI Chief Investment Officer <span style="font-size:11.5px;color:#94a3b8;font-weight:400;margin-left:8px;">(Cache: 1.3 ชม. ที่แล้ว · รีเฟรชอัตโนมัติทุก 7 วัน หรือเมื่อราคาขยับ ±8%)</span></div>
                 <div class="cio-headline">เป็นโอกาสทองในการทยอยเริ่มสะสมไม้แรก (Smart DCA) บริเวณราคาปัจจุบันจนถึงแนวรับ $154.73 เนื่องจากราคาปรับลงมาอยู่ใต้ EMA 200 ขณะที่พื้นฐานยังเติบโตระดับโดดเด่นด้วย PEG เพียง 0.97</div>
                 <div class="cio-grid">
                     <div class="cio-item">
@@ -1522,7 +1476,7 @@
             </div>
 
             <div class="cio-box" style="border-left: 4px solid #22c55e;">
-                <div class="cio-title">🧠 บทวิเคราะห์เจาะลึกจาก AI Chief Investment Officer <span style="font-size:11.5px;color:#94a3b8;font-weight:400;margin-left:8px;">(Cache: 1.0 ชม. ที่แล้ว · รีเฟรชอัตโนมัติทุก 7 วัน หรือเมื่อราคาขยับ ±8%)</span></div>
+                <div class="cio-title">🧠 บทวิเคราะห์เจาะลึกจาก AI Chief Investment Officer <span style="font-size:11.5px;color:#94a3b8;font-weight:400;margin-left:8px;">(Cache: 1.3 ชม. ที่แล้ว · รีเฟรชอัตโนมัติทุก 7 วัน หรือเมื่อราคาขยับ ±8%)</span></div>
                 <div class="cio-headline">เป็นจังหวะสะสมไม้แรกที่น่าสนใจมากเนื่องจาก RSI เข้าเขต Oversold ในขณะที่พื้นฐานยังคงแข็งแกร่งด้วยอัตรากำไรที่สูง</div>
                 <div class="cio-grid">
                     <div class="cio-item">
@@ -1690,7 +1644,7 @@
             </div>
 
             <div class="cio-box" style="border-left: 4px solid #22c55e;">
-                <div class="cio-title">🧠 บทวิเคราะห์เจาะลึกจาก AI Chief Investment Officer <span style="font-size:11.5px;color:#94a3b8;font-weight:400;margin-left:8px;">(Cache: 1.0 ชม. ที่แล้ว · รีเฟรชอัตโนมัติทุก 7 วัน หรือเมื่อราคาขยับ ±8%)</span></div>
+                <div class="cio-title">🧠 บทวิเคราะห์เจาะลึกจาก AI Chief Investment Officer <span style="font-size:11.5px;color:#94a3b8;font-weight:400;margin-left:8px;">(Cache: 1.3 ชม. ที่แล้ว · รีเฟรชอัตโนมัติทุก 7 วัน หรือเมื่อราคาขยับ ±8%)</span></div>
                 <div class="cio-headline">แนะนำทยอยสะสมไม้แรกในโซนนี้ทันที พร้อมตั้งรับตามบันได 3 ไม้ เนื่องจากราคาหลุดต่ำกว่าต้นทุนเฉลี่ยสถาบัน (EMA 200) ถึง -15.8% และมี PEG เพียง 0.46</div>
                 <div class="cio-grid">
                     <div class="cio-item">
@@ -1858,7 +1812,7 @@
             </div>
 
             <div class="cio-box" style="border-left: 4px solid #22c55e;">
-                <div class="cio-title">🧠 บทวิเคราะห์เจาะลึกจาก AI Chief Investment Officer <span style="font-size:11.5px;color:#94a3b8;font-weight:400;margin-left:8px;">(Cache: 1.0 ชม. ที่แล้ว · รีเฟรชอัตโนมัติทุก 7 วัน หรือเมื่อราคาขยับ ±8%)</span></div>
+                <div class="cio-title">🧠 บทวิเคราะห์เจาะลึกจาก AI Chief Investment Officer <span style="font-size:11.5px;color:#94a3b8;font-weight:400;margin-left:8px;">(Cache: 1.3 ชม. ที่แล้ว · รีเฟรชอัตโนมัติทุก 7 วัน หรือเมื่อราคาขยับ ±8%)</span></div>
                 <div class="cio-headline">ทยอยเก็บไม้แรกที่ราคาปัจจุบันและตั้งรับเพิ่มตามโซน Fibonacci เพื่อสะสมหุ้นเติบโตสูงในราคาที่สมเหตุสมผล</div>
                 <div class="cio-grid">
                     <div class="cio-item">
@@ -2026,7 +1980,7 @@
             </div>
 
             <div class="cio-box" style="border-left: 4px solid #4ade80;">
-                <div class="cio-title">🧠 บทวิเคราะห์เจาะลึกจาก AI Chief Investment Officer <span style="font-size:11.5px;color:#94a3b8;font-weight:400;margin-left:8px;">(Cache: 1.0 ชม. ที่แล้ว · รีเฟรชอัตโนมัติทุก 7 วัน หรือเมื่อราคาขยับ ±8%)</span></div>
+                <div class="cio-title">🧠 บทวิเคราะห์เจาะลึกจาก AI Chief Investment Officer <span style="font-size:11.5px;color:#94a3b8;font-weight:400;margin-left:8px;">(Cache: 1.3 ชม. ที่แล้ว · รีเฟรชอัตโนมัติทุก 7 วัน หรือเมื่อราคาขยับ ±8%)</span></div>
                 <div class="cio-headline">ชะลอการซื้อราคาตลาด แล้วตั้งรับด้วยกลยุทธ์ Smart DCA ไม้แรกที่ $44.14 เพื่อความปลอดภัยหลังหุ้นย่อตัวลึก 69% แต่ผลกำไรยังติดลบ</div>
                 <div class="cio-grid">
                     <div class="cio-item">
