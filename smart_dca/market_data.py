@@ -253,23 +253,70 @@ def _extract_eps_surprises(t: yf.Ticker) -> list[dict[str, Any]]:
     return items
 
 
+_CRUMB_BLOCKED_UNTIL: float = 0.0
+
+
 def _fetch_fundamentals_for_ticker(
     ticker: str,
     force_refresh: bool = False,
     store: SmartDCAStore | None = None,
 ) -> dict[str, Any]:
     """Fetch slow Yahoo Finance `.info`, `.news`, 4Q income trend, EPS surprises, and next earnings date (24h SQLite cache)."""
+    global _CRUMB_BLOCKED_UNTIL
+    import time
+
     st = store or get_store()
     if not force_refresh:
         cached = st.get_fundamentals(ticker)
         if cached is not None and "quarterly_trend" in cached:
             return cached
 
+    # Circuit breaker: if Yahoo crumb recently returned 429/401 on cloud IP, skip hammering crumb endpoints
+    if time.monotonic() < _CRUMB_BLOCKED_UNTIL:
+        stale = st.get_fundamentals(ticker, max_age_sec=-1)
+        if stale is not None:
+            return stale
+        cur_code, cur_sym = detect_currency(ticker, None)
+        return {
+            "company_name": ticker,
+            "sector": "Technology",
+            "currency": cur_code,
+            "currency_symbol": cur_sym,
+            "headlines": [],
+            "quarterly_trend": [],
+            "eps_surprises": [],
+        }
+
     t = yf.Ticker(ticker)
     try:
         info = t.info or {}
     except Exception:
         info = {}
+
+    info_has_data = bool(
+        info.get("longName")
+        or info.get("shortName")
+        or info.get("forwardPE")
+        or info.get("trailingPE")
+        or info.get("targetMeanPrice")
+    )
+
+    if not info_has_data:
+        # Trip circuit breaker for 10 minutes on cloud IP 429/401 — don't fire 3 more failing crumb calls!
+        _CRUMB_BLOCKED_UNTIL = time.monotonic() + 600.0
+        stale = st.get_fundamentals(ticker, max_age_sec=-1)
+        if stale is not None:
+            return stale
+        cur_code, cur_sym = detect_currency(ticker, None)
+        return {
+            "company_name": ticker,
+            "sector": "Technology",
+            "currency": cur_code,
+            "currency_symbol": cur_sym,
+            "headlines": [],
+            "quarterly_trend": [],
+            "eps_surprises": [],
+        }
 
     try:
         raw_news = t.news or []
@@ -288,14 +335,7 @@ def _fetch_fundamentals_for_ticker(
     quarterly_trend = _extract_quarterly_trend(t)
     eps_surprises = _extract_eps_surprises(t)
 
-    has_real_info = bool(
-        info.get("longName")
-        or info.get("shortName")
-        or info.get("forwardPE")
-        or info.get("trailingPE")
-        or info.get("targetMeanPrice")
-        or quarterly_trend
-    )
+    has_real_info = info_has_data or bool(quarterly_trend)
     if not has_real_info:
         # Yahoo crumb 429/401 on shared cloud IP: keep last known good fundamentals instead of wiping!
         stale = st.get_fundamentals(ticker, max_age_sec=-1)
