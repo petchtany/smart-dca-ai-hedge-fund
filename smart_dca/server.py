@@ -38,6 +38,7 @@ from .config import (
     TRUST_PROXY,
 )
 from .market_data import (
+    _fetch_chart_direct,
     _read_text_safe,
     fetch_all_tickers_batch,
     get_usd_thb_rate,
@@ -222,6 +223,8 @@ def modify_portfolio_tickers(add: list[str] | None = None, remove: list[str] | N
 
             for tkr in parsed_add:
                 df_check = yf.Ticker(tkr).history(period="1mo", interval="1d")
+                if df_check is None or df_check.empty:
+                    df_check = _fetch_chart_direct(tkr, period="1mo")
                 if df_check is None or df_check.empty:
                     return False, f"ไม่พบข้อมูลหุ้น '{tkr}' บน Yahoo Finance (หากเป็นหุ้นไทยให้เติม .BK เช่น PTT.BK)"
                 if tkr not in added_set:

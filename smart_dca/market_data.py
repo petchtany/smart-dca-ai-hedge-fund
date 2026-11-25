@@ -288,6 +288,20 @@ def _fetch_fundamentals_for_ticker(
     quarterly_trend = _extract_quarterly_trend(t)
     eps_surprises = _extract_eps_surprises(t)
 
+    has_real_info = bool(
+        info.get("longName")
+        or info.get("shortName")
+        or info.get("forwardPE")
+        or info.get("trailingPE")
+        or info.get("targetMeanPrice")
+        or quarterly_trend
+    )
+    if not has_real_info:
+        # Yahoo crumb 429/401 on shared cloud IP: keep last known good fundamentals instead of wiping!
+        stale = st.get_fundamentals(ticker, max_age_sec=-1)
+        if stale is not None:
+            return stale
+
     cur_code, cur_sym = detect_currency(ticker, info.get("currency"))
     bundle = {
         "company_name": info.get("longName") or info.get("shortName") or ticker,
@@ -317,8 +331,57 @@ def _fetch_fundamentals_for_ticker(
         "quarterly_trend": quarterly_trend,
         "eps_surprises": eps_surprises,
     }
-    st.set_fundamentals(ticker, bundle)
+    if has_real_info:
+        st.set_fundamentals(ticker, bundle)
     return bundle
+
+
+def _fetch_chart_direct(ticker: str, period: str = "1y", auto_adjust: bool = False) -> pd.DataFrame | None:
+    """Crumb-free fallback using Yahoo Finance v8 chart API (works even when crumb endpoint returns 429 on Render)."""
+    try:
+        import requests
+
+        url = f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}"
+        resp = requests.get(
+            url,
+            params={"range": period, "interval": "1d"},
+            headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"},
+            timeout=10,
+        )
+        if resp.status_code != 200:
+            return None
+        res_list = (resp.json().get("chart") or {}).get("result") or []
+        if not res_list:
+            return None
+        r0 = res_list[0]
+        timestamps = r0.get("timestamp") or []
+        quote = ((r0.get("indicators") or {}).get("quote") or [{}])[0]
+        adj_list = (r0.get("indicators") or {}).get("adjclose") or []
+        adjclose = adj_list[0].get("adjclose") if adj_list else None
+        if not timestamps or not quote.get("close"):
+            return None
+
+        dates = pd.to_datetime(timestamps, unit="s", utc=True).tz_convert(None).normalize()
+        closes = quote.get("close")
+        opens = quote.get("open") or closes
+        highs = quote.get("high") or closes
+        lows = quote.get("low") or closes
+        vols = quote.get("volume") or [0] * len(timestamps)
+
+        df = pd.DataFrame(
+            {"Open": opens, "High": highs, "Low": lows, "Close": closes, "Volume": vols},
+            index=dates,
+        ).dropna(subset=["Close"])
+
+        if auto_adjust and adjclose and len(adjclose) == len(timestamps):
+            adj_s = pd.Series(adjclose, index=dates).reindex(df.index)
+            ratio = (adj_s / df["Close"]).replace([np.inf, -np.inf], np.nan).fillna(1.0)
+            for col in ("Open", "High", "Low", "Close"):
+                df[col] = df[col] * ratio
+
+        return df if not df.empty else None
+    except Exception:
+        return None
 
 
 def _batch_download_ohlcv(tickers: list[str], period: str = "1y", auto_adjust: bool = False) -> dict[str, pd.DataFrame]:
@@ -362,7 +425,7 @@ def _batch_download_ohlcv(tickers: list[str], period: str = "1y", auto_adjust: b
     except Exception:
         pass
 
-    # Fallback for any ticker missing from the batch call
+    # Fallback for any ticker missing from the batch call (including crumb-free direct chart API)
     missing = [t for t in tickers if t not in frames]
     if missing:
         def _single(tkr: str) -> tuple[str, pd.DataFrame | None]:
@@ -372,9 +435,10 @@ def _batch_download_ohlcv(tickers: list[str], period: str = "1y", auto_adjust: b
                     return tkr, df.dropna(subset=["Close"])
             except Exception:
                 pass
-            return tkr, None
+            df_direct = _fetch_chart_direct(tkr, period=period, auto_adjust=auto_adjust)
+            return tkr, df_direct
 
-        with ThreadPoolExecutor(max_workers=min(4, len(missing))) as pool:
+        with ThreadPoolExecutor(max_workers=min(3, len(missing))) as pool:
             for tkr, df in pool.map(_single, missing):
                 if df is not None:
                     frames[tkr] = df
@@ -684,7 +748,7 @@ def fetch_all_tickers_batch(
             return tkr, _fetch_fundamentals_for_ticker(tkr, force_refresh=force_fundamentals, store=st)
 
         fundamentals_map: dict[str, dict[str, Any]] = {}
-        with ThreadPoolExecutor(max_workers=min(6, max(1, len(stale_tickers)))) as pool:
+        with ThreadPoolExecutor(max_workers=min(2, max(1, len(stale_tickers)))) as pool:
             for tkr, fund_data in pool.map(_get_f, stale_tickers):
                 fundamentals_map[tkr] = fund_data
 

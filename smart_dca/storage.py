@@ -54,6 +54,7 @@ class SmartDCAStore:
         self._migrate_legacy_files()
         if self.supabase_sync_enabled:
             self._pull_watchlist_from_supabase()
+            self._pull_fundamentals_from_supabase()
             self._pull_cio_cache_from_supabase()
         elif self.gist_sync_enabled:
             self._pull_watchlist_from_gist()
@@ -145,6 +146,61 @@ class SmartDCAStore:
                 )
                 return resp.status_code in (200, 201, 204)
             return True
+        except Exception:
+            return False
+
+    def _pull_fundamentals_from_supabase(self) -> bool:
+        """Pull fundamentals cache from Supabase so cloud hosts (Render) avoid Yahoo crumb 429/401."""
+        if not self.supabase_sync_enabled:
+            return False
+        try:
+            import requests
+
+            resp = requests.get(
+                f"{self.supabase_url}/rest/v1/smart_dca_fundamentals_cache",
+                params={"select": "ticker,payload,updated_at"},
+                headers=self._supabase_headers(),
+                timeout=8,
+            )
+            if resp.status_code != 200:
+                return False
+            rows = resp.json()
+            if not isinstance(rows, list) or not rows:
+                return False
+            with _DB_LOCK, self._connect() as conn:
+                for r in rows:
+                    tkr = str(r.get("ticker") or "").upper().strip()
+                    payload = r.get("payload")
+                    if not tkr or not isinstance(payload, dict):
+                        continue
+                    ts = self._iso_to_epoch(r.get("updated_at"))
+                    conn.execute(
+                        "INSERT OR REPLACE INTO fundamentals_cache (ticker, payload, updated_at) VALUES (?, ?, ?)",
+                        (tkr, json.dumps(payload, ensure_ascii=False), ts),
+                    )
+            return True
+        except Exception:
+            return False
+
+    def _push_fundamentals_to_supabase(self, ticker: str, data: dict[str, Any]) -> bool:
+        """Upsert a ticker's fundamentals bundle into Supabase."""
+        if not self.supabase_sync_enabled:
+            return False
+        try:
+            import requests
+
+            row = {
+                "ticker": ticker.upper().strip(),
+                "payload": data,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }
+            resp = requests.post(
+                f"{self.supabase_url}/rest/v1/smart_dca_fundamentals_cache",
+                headers=self._supabase_headers(prefer="resolution=merge-duplicates"),
+                json=row,
+                timeout=8,
+            )
+            return resp.status_code in (200, 201, 204)
         except Exception:
             return False
 
@@ -411,7 +467,7 @@ class SmartDCAStore:
             ).fetchone()
         if not row:
             return None
-        if (time.time() - float(row[1])) > max_age_sec:
+        if max_age_sec >= 0 and (time.time() - float(row[1])) > max_age_sec:
             return None
         try:
             return json.loads(row[0])
@@ -425,6 +481,8 @@ class SmartDCAStore:
                 "INSERT OR REPLACE INTO fundamentals_cache (ticker, payload, updated_at) VALUES (?, ?, ?)",
                 (t, json.dumps(data, ensure_ascii=False), time.time()),
             )
+        if self.supabase_sync_enabled:
+            self._push_fundamentals_to_supabase(t, data)
 
     # --- Price / Technical Result Cache (30m TTL) ---
     def get_price_analysis(self, ticker: str, max_age_sec: int = PRICE_CACHE_TTL_SEC) -> dict[str, Any] | None:
