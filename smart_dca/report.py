@@ -408,10 +408,12 @@ def generate_html_report(
 <html lang="th">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>AI Chief Investment Officer — ระบบวางแผนออมหุ้น Smart DCA & Buy the Dip (v4.0)</title>
 <script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap');
+  *, *::before, *::after {{ box-sizing: border-box; }}
   body {{
     font-family: 'Sarabun', 'Segoe UI', Tahoma, sans-serif;
     background: #0b0f19;
@@ -419,6 +421,7 @@ def generate_html_report(
     margin: 0;
     padding: 24px;
     line-height: 1.65;
+    overflow-x: hidden;
   }}
   .container {{ max-width: 1240px; margin: 0 auto; }}
   h1 {{ margin-top: 0; color: #4ade80; font-size: 26px; }}
@@ -523,7 +526,7 @@ def generate_html_report(
   }}
   .cio-title {{ font-size: 14px; font-weight: 700; color: #38bdf8; letter-spacing: 0.4px; margin-bottom: 6px; }}
   .cio-headline {{ font-size: 19px; font-weight: 700; color: #4ade80; margin-bottom: 14px; }}
-  .cio-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(460px, 1fr)); gap: 14px; }}
+  .cio-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap: 14px; }}
   .cio-item {{ background: rgba(11,15,25,0.65); padding: 12px 16px; border-radius: 8px; border: 1px solid rgba(51,65,85,0.7); }}
   .cio-item strong {{ display: block; color: #f8fafc; font-size: 14px; margin-bottom: 4px; }}
   .cio-item p {{ margin: 0; color: #cbd5e1; font-size: 14.5px; }}
@@ -591,12 +594,27 @@ def generate_html_report(
   .tab-pane {{ display: none; }}
   .tab-pane.active {{ display: block; animation: fadeIn 0.2s ease-out; }}
   @keyframes fadeIn {{ from {{ opacity: 0; transform: translateY(4px); }} to {{ opacity: 1; transform: translateY(0); }} }}
-  .top3-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 16px; margin-bottom: 24px; }}
+  .top3-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: 16px; margin-bottom: 24px; }}
   .top3-card {{ background: linear-gradient(145deg, #131b2e 0%, #0f172a 100%); border: 1px solid #22c55e; border-radius: 12px; padding: 16px 18px; cursor: pointer; transition: 0.18s; box-shadow: 0 6px 18px rgba(0,0,0,0.3); }}
   .top3-card:hover {{ transform: translateY(-3px); border-color: #4ade80; box-shadow: 0 10px 24px rgba(34,197,94,0.18); }}
   .rank-badge {{ background: rgba(34,197,94,0.2); color: #4ade80; border: 1px solid #22c55e; padding: 2px 8px; border-radius: 6px; font-size: 12px; font-weight: 700; }}
   .stock-pick-btn {{ background: #1e293b; color: #e2e8f0; border: 1px solid #334155; padding: 7px 14px; border-radius: 8px; font-family: inherit; font-weight: 700; font-size: 14px; cursor: pointer; transition: 0.15s; }}
   .stock-pick-btn:hover, .stock-pick-btn.active {{ background: #38bdf8; color: #0b0f19; border-color: #38bdf8; }}
+  @media (max-width: 768px) {{
+    body {{ padding: 12px; }}
+    .top-navbar {{ margin: -12px -12px 16px -12px; padding: 10px 12px; }}
+    .navbar-inner {{ gap: 10px; }}
+    .nav-tabs {{ width: 100%; justify-content: space-between; }}
+    .nav-tab-btn {{ padding: 7px 10px; font-size: 13px; flex: 1 1 auto; justify-content: center; }}
+    .card, .screener-card, .calc-card {{ padding: 14px; }}
+    .add-input {{ width: 100%; max-width: 100%; }}
+    .add-form {{ width: 100%; }}
+    .ticker {{ font-size: 22px; }}
+    .price {{ font-size: 20px; }}
+    .cio-headline {{ font-size: 16.5px; }}
+    .tv-chart {{ height: 300px; }}
+    th, td {{ padding: 8px 9px; font-size: 13px; }}
+  }}
 </style>
 </head>
 <body>

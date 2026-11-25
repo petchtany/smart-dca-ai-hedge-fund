@@ -157,6 +157,9 @@ def build_portfolio_snapshot(
     cli_tickers: list[str] | None = None,
 ) -> dict[str, Any]:
     """Fetch batch prices, split-cached fundamentals, FX rate, and smart-TTL CIO analyses."""
+    if force_refresh:
+        # Pull latest cloud updates (e.g. morning GitHub Actions fundamentals + CIO) before refreshing prices
+        get_store().sync_from_cloud()
     fund_name, default_tickers, ai_weights, signals_by_ticker = load_latest_fund_signals()
     tickers = cli_tickers if cli_tickers else default_tickers
     fx_usd_thb = get_usd_thb_rate(force_refresh=force_refresh)
@@ -402,11 +405,12 @@ def serve_api(port: int = 8765) -> None:
                 return
 
             html_file = ROOT_DIR / "trade_plan.html"
+            thai_tz = timezone(timedelta(hours=7))
             if not html_file.exists():
                 sync_report_quietly(force_refresh=True)
             else:
-                file_day = datetime.fromtimestamp(html_file.stat().st_mtime).strftime("%Y-%m-%d")
-                today_day = datetime.now().strftime("%Y-%m-%d")
+                file_day = datetime.fromtimestamp(html_file.stat().st_mtime, tz=thai_tz).strftime("%Y-%m-%d")
+                today_day = datetime.now(thai_tz).strftime("%Y-%m-%d")
                 if file_day != today_day:
                     sync_report_quietly(force_refresh=True)
 

@@ -63,6 +63,17 @@ class SmartDCAStore:
     def supabase_sync_enabled(self) -> bool:
         return bool(self.supabase_url and self.supabase_key)
 
+    def sync_from_cloud(self) -> bool:
+        """Pull latest watchlist, fundamentals, and CIO caches from Supabase (or Gist) into local SQLite."""
+        if self.supabase_sync_enabled:
+            ok_w = self._pull_watchlist_from_supabase()
+            ok_f = self._pull_fundamentals_from_supabase()
+            ok_c = self._pull_cio_cache_from_supabase()
+            return ok_w or ok_f or ok_c
+        if self.gist_sync_enabled:
+            return self._pull_watchlist_from_gist()
+        return False
+
     @property
     def gist_sync_enabled(self) -> bool:
         return bool(self.github_token and self.gist_id)
