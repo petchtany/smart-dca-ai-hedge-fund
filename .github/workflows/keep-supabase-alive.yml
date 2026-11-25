@@ -1,0 +1,29 @@
+name: Keep Supabase Alive
+
+on:
+  schedule:
+    # Run every 4 days at 02:00 UTC (09:00 ICT) to prevent Supabase Free Tier 7-day auto-pause
+    - cron: "0 2 */4 * *"
+  workflow_dispatch:
+
+jobs:
+  ping-supabase:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Supabase smart_dca_watchlist
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL || 'https://beytmdcfrsmolvrmrhzw.supabase.co' }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          if [ -z "$SUPABASE_KEY" ]; then
+            echo "SUPABASE_SERVICE_ROLE_KEY secret is not set in GitHub Actions secrets. Skipping."
+            exit 0
+          fi
+          HTTP_CODE=$(curl -sS -o /dev/null -w "%{http_code}" \
+            -H "apikey: $SUPABASE_KEY" \
+            -H "Authorization: Bearer $SUPABASE_KEY" \
+            "$SUPABASE_URL/rest/v1/smart_dca_watchlist?select=ticker&limit=1")
+          echo "Supabase ping HTTP status: $HTTP_CODE"
+          if [ "$HTTP_CODE" -ne 200 ]; then
+            exit 1
+          fi
