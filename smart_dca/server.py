@@ -41,6 +41,7 @@ from .market_data import (
     _fetch_chart_direct,
     _read_text_safe,
     fetch_all_tickers_batch,
+    fetch_macro_radar,
     get_usd_thb_rate,
     load_latest_fund_signals,
 )
@@ -159,6 +160,7 @@ def build_portfolio_snapshot(
     fund_name, default_tickers, ai_weights, signals_by_ticker = load_latest_fund_signals()
     tickers = cli_tickers if cli_tickers else default_tickers
     fx_usd_thb = get_usd_thb_rate(force_refresh=force_refresh)
+    macro = fetch_macro_radar(force_refresh=force_refresh)
     results = fetch_all_tickers_batch(
         tickers,
         force_refresh=force_refresh,
@@ -166,11 +168,12 @@ def build_portfolio_snapshot(
         signals_by_ticker=signals_by_ticker,
     )
     if results:
-        populate_cio_advices(results, signals_by_ticker, force_refresh=force_cio)
+        populate_cio_advices(results, signals_by_ticker, force_refresh=force_cio, macro=macro)
     return {
         "fund_name": fund_name,
         "tickers": tickers,
         "fx_usd_thb": fx_usd_thb,
+        "macro": macro,
         "ai_weights": ai_weights,
         "signals_by_ticker": signals_by_ticker,
         "results": results,
@@ -189,6 +192,7 @@ def sync_report_quietly(force_refresh: bool = False, force_cio: bool = False) ->
                     snap["signals_by_ticker"],
                     snap["fund_name"],
                     fx_usd_thb=snap["fx_usd_thb"],
+                    macro=snap.get("macro"),
                 )
         except Exception:
             pass
@@ -379,6 +383,7 @@ def serve_api(port: int = 8765) -> None:
                     "ok": True,
                     "updated_at": snap["updated_at"],
                     "fx_usd_thb": snap["fx_usd_thb"],
+                    "macro": snap.get("macro"),
                     "count": len(items),
                     "stocks": sorted(items, key=lambda x: x["dip_score"], reverse=True),
                 })

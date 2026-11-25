@@ -1,0 +1,45 @@
+name: Daily Cloud Sync (Supabase + AI CIO)
+
+on:
+  schedule:
+    # Run every morning Tue-Sat at 23:30 UTC (06:30 ICT, right after US market close)
+    - cron: "30 23 * * 1-5"
+  workflow_dispatch:
+    inputs:
+      force_cio:
+        description: "Force regenerate all Gemini AI CIO analyses (ignore 7-day/8% cache)"
+        type: boolean
+        default: false
+
+jobs:
+  sync-supabase:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Refresh Fundamentals, Macro Radar & Smart-TTL AI CIO to Supabase
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL || 'https://beytmdcfrsmolvrmrhzw.supabase.co' }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+        run: |
+          if [ -z "$SUPABASE_SERVICE_ROLE_KEY" ]; then
+            echo "SUPABASE_SERVICE_ROLE_KEY secret is not set. Skipping cloud sync."
+            exit 0
+          fi
+          EXTRA_FLAGS=""
+          if [ "${{ inputs.force_cio }}" = "true" ]; then
+            EXTRA_FLAGS="--force-cio"
+          fi
+          python trade_plan.py --no-open --refresh $EXTRA_FLAGS

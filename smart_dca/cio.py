@@ -29,6 +29,7 @@ def generate_cio_thai_analysis(
     sigs: list[dict],
     force_refresh: bool = False,
     store: SmartDCAStore | None = None,
+    macro: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Generate or fetch cached Thai CIO analysis; auto-invalidates on TTL expiry or >=8% price drift."""
     st = store or get_store()
@@ -96,6 +97,17 @@ def generate_cio_thai_analysis(
     beta_str = f"{info['beta']:.2f}" if info.get("beta") is not None else "N/A"
     rec_str = info.get("recommendation") or "N/A"
 
+    macro_summary = "ไม่มีข้อมูลมหภาค"
+    if macro:
+        vix_s = f"{macro['vix']:.2f}" if macro.get("vix") is not None else "N/A"
+        y10_s = f"{macro['us10y']:.2f}%" if macro.get("us10y") is not None else "N/A"
+        sp_s = (
+            f"{macro['sp500']:,.0f} (ห่าง EMA200 {macro['sp500_dist_ema200_pct']:+.1f}%)"
+            if macro.get("sp500") is not None and macro.get("sp500_dist_ema200_pct") is not None
+            else "N/A"
+        )
+        macro_summary = f"ภาวะตลาด: {macro.get('regime_label', 'N/A')} | VIX: {vix_s} | US 10Y Yield: {y10_s} | S&P 500: {sp_s}"
+
     news_summary = "\n".join(f"- {h[:200]}" for h in (info.get("headlines") or [])) or "ไม่มีข่าวพิเศษ"
 
     system_prompt = (
@@ -108,6 +120,7 @@ def generate_cio_thai_analysis(
     user_prompt = f"""วิเคราะห์หุ้น {ticker} ({info['company_name']} - กลุ่ม {info['sector']} | สกุลเงิน {info.get('currency', 'USD')}) สำหรับกลยุทธ์สะสมระยะยาว (Smart DCA & Buy the Dip):
 
 [1. ข้อมูลราคาและโซนเทคนิค]
+- ภาวะตลาดโลก (Macro Radar): {macro_summary}
 - ราคาปัจจุบัน: {cur}{close:.2f} (ลดลง {info['drawdown_pct']:.1f}% จากจุดสูงสุดรอบ 1 ปีที่ {cur}{info['high_52w']:.2f})
 - เส้นค่าเฉลี่ย: EMA 50 = {cur}{info['ema50']:.2f}, EMA 200 (ต้นทุนเฉลี่ย 1 ปี) = {cur}{info['ema200']:.2f} (ราคาปัจจุบันห่างจาก EMA 200 {info['dist_ema200_pct']:+.1f}%)
 - RSI (14 วัน): {info['rsi']:.1f}
@@ -192,6 +205,7 @@ def populate_cio_advices(
     signals_by_ticker: dict[str, list[dict]],
     force_refresh: bool = False,
     store: SmartDCAStore | None = None,
+    macro: dict[str, Any] | None = None,
 ) -> None:
     """Populate `cio_advice` for all tickers in parallel."""
     apply_credentials()
@@ -204,6 +218,7 @@ def populate_cio_advices(
             signals_by_ticker.get(tkr, []),
             force_refresh=force_refresh,
             store=st,
+            macro=macro,
         )
 
     with ThreadPoolExecutor(max_workers=3) as pool:

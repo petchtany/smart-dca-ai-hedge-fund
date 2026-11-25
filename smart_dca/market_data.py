@@ -52,6 +52,8 @@ def get_usd_thb_rate(force_refresh: bool = False, store: SmartDCAStore | None = 
 
     try:
         df = yf.Ticker("THB=X").history(period="5d", interval="1d")
+        if df is None or df.empty:
+            df = _fetch_chart_direct("THB=X", period="5d")
         if df is not None and not df.empty:
             val = _clean_num(df["Close"].iloc[-1])
             if val and 20.0 <= val <= 50.0:
@@ -60,6 +62,84 @@ def get_usd_thb_rate(force_refresh: bool = False, store: SmartDCAStore | None = 
     except Exception:
         pass
     return DEFAULT_FX_USD_THB
+
+
+def fetch_macro_radar(force_refresh: bool = False, store: SmartDCAStore | None = None) -> dict[str, Any]:
+    """Fetch global macro indicators (^VIX, ^TNX 10Y yield, ^GSPC vs EMA200) via crumb-free chart API."""
+    st = store or get_store()
+    if not force_refresh:
+        cached = st.get_price_analysis("__MACRO_RADAR__")
+        if cached is not None:
+            return cached
+
+    frames = _batch_download_ohlcv(["^VIX", "^TNX", "^GSPC"], period="1y")
+
+    vix = None
+    vix_chg = None
+    if "^VIX" in frames and not frames["^VIX"].empty:
+        vdf = frames["^VIX"]
+        vix = round(float(vdf["Close"].iloc[-1]), 2)
+        if len(vdf) >= 2:
+            prev = float(vdf["Close"].iloc[-2])
+            if prev > 0:
+                vix_chg = round(((vix - prev) / prev) * 100.0, 1)
+
+    us10y = None
+    if "^TNX" in frames and not frames["^TNX"].empty:
+        us10y = round(float(frames["^TNX"]["Close"].iloc[-1]), 2)
+
+    sp500 = None
+    sp500_ema200 = None
+    sp500_dist_ema200 = None
+    sp500_dd = None
+    if "^GSPC" in frames and len(frames["^GSPC"]) >= 30:
+        sdf = frames["^GSPC"].copy()
+        sdf["EMA200"] = sdf["Close"].ewm(span=200, adjust=False).mean()
+        sp500 = round(float(sdf["Close"].iloc[-1]), 2)
+        sp500_ema200 = round(float(sdf["EMA200"].iloc[-1]), 2)
+        if sp500_ema200 > 0:
+            sp500_dist_ema200 = round(((sp500 - sp500_ema200) / sp500_ema200) * 100.0, 1)
+        high_52w = float(sdf["High"].max())
+        if high_52w > 0:
+            sp500_dd = round(((sp500 - high_52w) / high_52w) * 100.0, 1)
+
+    # Classify Market Regime for Smart DCA
+    if (vix is not None and vix >= 25.0) or (sp500_dist_ema200 is not None and sp500_dist_ema200 <= -3.0):
+        regime = "EXTREME_FEAR"
+        regime_label = "🔥 ตลาดกลัวหนัก (Fear / Panic)"
+        regime_advice = "จังหวะทองของสาย Smart DCA! เพิ่มงบช้อนหุ้นคุณภาพดีที่ลงมาชนแนวรับ"
+        regime_color = "#22c55e"
+    elif (vix is not None and vix >= 18.0) or (sp500_dist_ema200 is not None and sp500_dist_ema200 <= 1.5):
+        regime = "CAUTIOUS_DIP"
+        regime_label = "🎯 ตลาดเริ่มย่อ (Cautious Dip)"
+        regime_advice = "ทยอยสะสมตามบันได ไม้ 1–2 เน้นหุ้นที่ Dip Score สูงและงบโตแกร่ง"
+        regime_color = "#38bdf8"
+    elif (vix is not None and vix < 14.0) and (sp500_dist_ema200 is not None and sp500_dist_ema200 >= 10.0):
+        regime = "GREED_OVERHEATED"
+        regime_label = "⚠️ ตลาดร้อนแรง (Greed / Overheated)"
+        regime_advice = "อย่ารีบไล่ราคา ออมตามวินัยขั้นต่ำและเก็บเงินสดสำรองไว้รอจังหวะย่อ"
+        regime_color = "#f59e0b"
+    else:
+        regime = "NEUTRAL"
+        regime_label = "⚖️ ตลาดปกติ (Neutral)"
+        regime_advice = "ออม DCA ตามแผนปกติ และตั้ง Limit Order ดักรับตามแนวรับแต่ละตัว"
+        regime_color = "#60a5fa"
+
+    macro = {
+        "vix": vix,
+        "vix_chg_pct": vix_chg,
+        "us10y": us10y,
+        "sp500": sp500,
+        "sp500_ema200": sp500_ema200,
+        "sp500_dist_ema200_pct": sp500_dist_ema200,
+        "sp500_drawdown_pct": sp500_dd,
+        "regime": regime,
+        "regime_label": regime_label,
+        "regime_advice": regime_advice,
+        "regime_color": regime_color,
+    }
+    st.set_price_analysis("__MACRO_RADAR__", macro)
+    return macro
 
 
 def load_latest_fund_signals(

@@ -51,6 +51,7 @@ def generate_html_report(
     signals_by_ticker: dict[str, list[dict]],
     fund_name: str | None,
     fx_usd_thb: float = DEFAULT_FX_USD_THB,
+    macro: dict[str, Any] | None = None,
 ) -> Path:
     cards_html = []
     screener_rows_html = []
@@ -359,6 +360,50 @@ def generate_html_report(
     updated_at_str = datetime.now(THAI_TZ).strftime("%Y-%m-%d %H:%M:%S (เวลาไทย)")
     fx_display = f"{fx_usd_thb:.2f}"
 
+    macro_bar_html = ""
+    if macro:
+        r_color = _esc(macro.get("regime_color") or "#38bdf8")
+        r_label = _esc(macro.get("regime_label") or "ตลาดปกติ")
+        r_advice = _esc(macro.get("regime_advice") or "")
+        vix_val = f"{macro['vix']:.2f}" if macro.get("vix") is not None else "N/A"
+        vix_chg = f" ({macro['vix_chg_pct']:+.1f}%)" if macro.get("vix_chg_pct") is not None else ""
+        vix_color = "#22c55e" if (macro.get("vix") or 0) >= 25 else ("#f59e0b" if (macro.get("vix") or 0) < 14 else "#38bdf8")
+        y10_val = f"{macro['us10y']:.2f}%" if macro.get("us10y") is not None else "N/A"
+        sp_val = f"{macro['sp500']:,.0f}" if macro.get("sp500") is not None else "N/A"
+        sp_dist = (
+            f"{macro['sp500_dist_ema200_pct']:+.1f}% vs EMA200"
+            if macro.get("sp500_dist_ema200_pct") is not None
+            else ""
+        )
+        macro_bar_html = f"""
+    <!-- Global Macro & Fear/Greed Radar -->
+    <div style="background:linear-gradient(135deg,#0f172a 0%,#131b2e 100%);border:1px solid {r_color};border-left:5px solid {r_color};border-radius:12px;padding:14px 18px;margin-bottom:18px;display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:14px;">
+      <div style="flex:1;min-width:260px;">
+        <div style="font-size:12px;color:#94a3b8;font-weight:700;letter-spacing:0.4px;">🌡️ MACRO &amp; FEAR/GREED RADAR (อุณหภูมิตลาดโลก)</div>
+        <div style="font-size:17px;font-weight:700;color:{r_color};margin:2px 0;">{r_label}</div>
+        <div style="font-size:13px;color:#cbd5e1;">{r_advice}</div>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:10px;">
+        <div class="sum-box" style="padding:8px 14px;min-width:115px;">
+          <span class="s-label">VIX (ความกลัว)</span>
+          <span class="s-val" style="font-size:16px;color:{vix_color};">{vix_val}<small style="font-size:11px;color:#94a3b8;">{vix_chg}</small></span>
+        </div>
+        <div class="sum-box" style="padding:8px 14px;min-width:110px;">
+          <span class="s-label">US 10Y Yield</span>
+          <span class="s-val" style="font-size:16px;color:#facc15;">{y10_val}</span>
+        </div>
+        <div class="sum-box" style="padding:8px 14px;min-width:155px;">
+          <span class="s-label">S&amp;P 500</span>
+          <span class="s-val cyan" style="font-size:16px;">{sp_val} <small style="font-size:11px;color:#94a3b8;">{sp_dist}</small></span>
+        </div>
+        <div class="sum-box" style="padding:8px 14px;min-width:105px;">
+          <span class="s-label">USD / THB</span>
+          <span class="s-val green" style="font-size:16px;">฿{fx_display}</span>
+        </div>
+      </div>
+    </div>
+        """
+
     html = f"""<!DOCTYPE html>
 <html lang="th">
 <head>
@@ -592,6 +637,7 @@ def generate_html_report(
 
   <!-- ==================== TAB 1: OVERVIEW & SCREENER ==================== -->
   <section id="tab-overview" class="tab-pane active">
+    {macro_bar_html}
     <div class="add-bar">
       <div class="add-form">
         <strong style="color:#38bdf8;font-size:15px;">➕ เพิ่มหุ้นเข้าพอร์ต:</strong>

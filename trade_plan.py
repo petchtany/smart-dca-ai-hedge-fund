@@ -152,6 +152,7 @@ def main() -> None:
             snap["signals_by_ticker"],
             snap["fund_name"],
             fx_usd_thb=snap["fx_usd_thb"],
+            macro=snap.get("macro"),
         )
         ensure_background_server(Path(__file__), 8765)
         console.print(
