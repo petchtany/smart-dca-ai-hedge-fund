@@ -22,7 +22,15 @@ wheels/
 
 # Virtual Environment
 venv/
+.venv/
 ENV/
+
+# Local SQLite caches & data
+cache/*.db
+cache/*.db-wal
+cache/*.db-shm
+cache/ticker_dca/
+.hedge-fund-data/
 
 # Environment Variables
 .env

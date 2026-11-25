@@ -9,3 +9,9 @@ services:
         value: 3.12.0
       - key: GOOGLE_API_KEY
         sync: false
+      - key: SMART_DCA_ADMIN_TOKEN
+        generateValue: true
+      - key: SUPABASE_URL
+        value: https://beytmdcfrsmolvrmrhzw.supabase.co
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
