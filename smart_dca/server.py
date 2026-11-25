@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import base64
 from collections import defaultdict, deque
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 import hmac
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
@@ -174,7 +174,7 @@ def build_portfolio_snapshot(
         "ai_weights": ai_weights,
         "signals_by_ticker": signals_by_ticker,
         "results": results,
-        "updated_at": datetime.now().isoformat(timespec="seconds"),
+        "updated_at": datetime.now(timezone(timedelta(hours=7))).isoformat(timespec="seconds"),
     }
 
 

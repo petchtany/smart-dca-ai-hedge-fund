@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 import html as html_lib
 import json
 import os
@@ -11,6 +11,8 @@ import tempfile
 from typing import Any
 
 from .config import DEFAULT_FX_USD_THB, ROOT_DIR
+
+THAI_TZ = timezone(timedelta(hours=7))
 
 
 def _esc(val: Any) -> str:
@@ -354,7 +356,7 @@ def generate_html_report(
         """
 
     charts_json = json.dumps(chart_configs).replace("</", "<\\/")
-    updated_at_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    updated_at_str = datetime.now(THAI_TZ).strftime("%Y-%m-%d %H:%M:%S (เวลาไทย)")
     fx_display = f"{fx_usd_thb:.2f}"
 
     html = f"""<!DOCTYPE html>
